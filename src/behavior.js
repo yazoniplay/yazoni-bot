@@ -5,50 +5,55 @@ export class BehaviorLoop{
   normalizeMessage(message){let text=String(message||"").trim();text=text.replace(new RegExp("^\\s*"+this.config.botName+"[,:]?\\s*","i"),"");return text.toLowerCase().trim();}
   async onOwnerMessage(message){
     const text=this.normalizeMessage(message);
-    const mine=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?mine\\s+(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:for|please|now))?$/i);
-    const craft=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?craft\\s+(?:(\\d+)\\s+)?(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:for|please|now))?$/i);
+    const commandId=Date.now();
+    this.commandId=commandId;
+
+    const run=async(action,label)=>{
+      this.game.cancelMovement();
+      this.game.say("Got it — "+label+".");
+      const ok=await this.game.action(action);
+      this.game.memory.remember(this.config.owner,"command",label+" => "+(ok?"ok":"failed"),ok?2:4);
+      if(!ok)this.game.say("I couldn't complete that right now.");
+      return ok;
+    };
+
+    if(/^(stop|stay|wait|stop following)$/i.test(text)){
+      this.game.stop(); this.game.say("Stopping."); return;
+    }
+
+    const follow=text.match(/^(?:please\\s+)?follow(?:\\s+me)?$/i);
+    if(follow){await run({action:"follow_owner"},"following you");return;}
+
+    if(/^(?:come|come here|get here|come to me)$/i.test(text)){
+      await run({action:"come_owner"},"coming to you");return;
+    }
+
+    const direction=text.match(/^(?:please\\s+)?(?:mine|dig|break)\\s+(up|down|above|below)(?:\\s+.*)?$/i);
+    if(direction){
+      const dir=direction[1].toLowerCase()==="above"?"up":direction[1].toLowerCase()==="below"?"down":direction[1].toLowerCase();
+      await run({action:"mine_direction",item:dir,count:8},"digging "+dir);return;
+    }
+
+    if(/^(?:get out|escape|i(?:'m| am) stuck|help me out)$/i.test(text)){
+      await run({action:"escape"},"getting you unstuck");return;
+    }
+
+    const craft=text.match(/^(?:please\\s+)?(?:craft|make)\\s+(?:(\\d+)\\s+)?(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:please|now))?$/i);
     if(craft){
       const count=Math.max(1,Math.min(64,Number(craft[1])||1));
-      const item=craft[2].trim().replace(/\\s+/g," ");
-      this.game.cancelMovement();
-      this.game.say("Got it — crafting "+(count>1?count+" ":"")+item+".");
-      const ok=await this.game.action({action:"craft",item,count});
-      this.game.memory.remember(this.config.owner,"action","explicit craft "+item+" x"+count+" => "+(ok?"ok":"failed"),ok?1:3);
-      if(!ok)this.game.say("I couldn't craft "+item+" with the resources available, so I stopped.");
-      else this.game.say("Done. Crafted "+(count>1?count+" ":"")+item+".");
-      return;
+      await run({action:"craft",item:craft[2].trim(),count},"crafting "+(count>1?count+" ":"")+craft[2].trim());return;
     }
-    const direction=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?(?:mine|dig)\\s+(up|down|above|below)(?:\\s+(?:for|please|now))?$/i);
-    if(direction){
-      const dir=direction[1].toLowerCase();
-      const normalized=dir==="above"?"up":dir==="below"?"down":dir;
-      this.game.cancelMovement();
-      this.game.say("Got it — digging "+normalized+".");
-      const ok=await this.game.action({action:"mine_direction",item:normalized,count:8});
-      this.game.memory.remember(this.config.owner,"action","explicit mine "+normalized+" => "+(ok?"ok":"failed"),ok?1:3);
-      if(!ok)this.game.say("I couldn't safely make progress "+normalized+" from here.");
-      return;
-    }
-    if(/^(get out|escape|i'm stuck|im stuck)$/i.test(text)){
-      this.game.cancelMovement();
-      this.game.say("Alright, getting us unstuck.");
-      const ok=await this.game.action({action:"explore"});
-      if(!ok)this.game.say("I can't find a route from here yet.");
-      return;
-    }
-    if(mine){
-      const item=mine[1].trim().replace(/\\s+/g," ");
-      this.game.cancelMovement();
-      this.game.say("Got it — mining "+item+".");
-      const ok=await this.game.action({action:"mine",item,count:1});
-      this.game.memory.remember(this.config.owner,"action","explicit mine "+item+" => "+(ok?"ok":"failed"),ok?1:3);
-      if(!ok)this.game.say("I couldn't find "+item+" nearby, so I stopped instead of digging random blocks.");
-      else this.game.say("Done. I found the "+item+".");
-      return;
-    }
-    if(/^(stop|stay|wait)$/i.test(text)){this.game.cancelMovement();this.game.say("Stopping.");return;}
-    if(/^(follow|follow me)$/i.test(text)){this.game.cancelMovement();this.game.follow(this.config.owner);this.game.say("On my way.");return;}
-    if(/^come here$/i.test(text)){this.game.cancelMovement();this.game.come(this.config.owner);this.game.say("Coming.");return;}
+
+    const mine=text.match(/^(?:please\\s+)?(?:mine|collect|get)\\s+(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:please|now|for\\s+me))?$/i);
+    if(mine){await run({action:"mine",item:mine[1].trim(),count:1},"mining "+mine[1].trim());return;}
+
+    const drop=text.match(/^(?:please\\s+)?drop\\s+(?:(\\d+)\\s+)?(.+?)(?:\\s+(?:please|now))?$/i);
+    if(drop){await run({action:"drop",item:drop[2].trim(),count:Number(drop[1])||1},"dropping "+drop[2].trim());return;}
+
+    if(/^(?:eat|eat something|feed yourself)$/i.test(text)){await run({action:"eat"},"eating");return;}
+    if(/^(?:explore|go explore|look around)$/i.test(text)){await run({action:"explore"},"exploring");return;}
+    if(/^(?:pick up|pickup|collect nearby items)$/i.test(text)){await run({action:"pickup"},"picking that up");return;}
+
     if(this.busy)return;
     await this.runThought(message);
   }
