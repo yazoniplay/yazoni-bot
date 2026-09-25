@@ -7,12 +7,14 @@ export class BehaviorLoop{
   async runThought(input){
     this.busy=true;
     try{
+      if(this.config.autoFollow&&!this.game.following){const owner=this.game.bot.players[this.config.owner]?.entity;if(owner){const d=this.game.bot.entity.position.distanceTo(owner.position);if(d>this.config.followDistance&&d<80)this.game.follow(this.config.owner);}}
       const state=this.game.state();
       if(state.food!==undefined&&state.food<8)await this.game.action({action:"eat"});
       const thought=await this.brain.think(input,state);this.lastPlanAt=Date.now();
       if(thought.reply&&input)this.game.say(thought.reply);
       for(const step of (Array.isArray(thought.steps)?thought.steps.slice(0,this.config.maxPlanSteps):[])){
         if(!this.game.bot?.entity)break;
+        if(this.config.autoFollow&&!this.game.following){const owner=this.game.bot.players[this.config.owner]?.entity;if(owner&&this.game.bot.entity.position.distanceTo(owner.position)>this.config.followDistance)this.game.follow(this.config.owner);}
         if(this.game.bot.health<5){await this.game.action({action:"eat"});break;}
         const ok=await this.game.action(step);
         this.game.memory.remember(this.config.owner,"action",step.action+(step.item?" "+step.item:"")+" => "+(ok?"ok":"failed"),ok?1:3);
