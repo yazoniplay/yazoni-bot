@@ -21,7 +21,7 @@ const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
 pkg.dependencies={...(pkg.dependencies||{}),mineflayer:"4.33.0"};
 fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\n");
 
-run("npm",["install","--no-audit","--no-fund"],root);
+run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
 
 fs.mkdirSync(path.join(root,"profiles"),{recursive:true});
 const profile={
