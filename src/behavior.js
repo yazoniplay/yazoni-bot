@@ -1,3 +1,5 @@
+import {goals} from "mineflayer-pathfinder";
+const {GoalNear}=goals;
 export class BehaviorLoop{
   constructor(game,brain,config){this.game=game;this.brain=brain;this.config=config;this.enabled=true;this.timer=null;this.busy=false;this.lastPlan=0;}
   start(){if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(e=>console.error("[Behavior]",e)),12000);}
@@ -12,7 +14,7 @@ export class BehaviorLoop{
       if(state.food!==undefined&&state.food<8){await this.eatIfPossible();return;}
       if(this.game.following||!owner)return;
       const distance=owner.position.distanceTo(this.game.bot.entity.position);
-      if(distance>18&&distance<80){this.game.bot.pathfinder.setGoal(new this.game.bot.pathfinder.goals.GoalNear(owner.position.x,owner.position.y,owner.position.z,5));return;}
+      if(distance>18&&distance<80){this.game.bot.pathfinder.setGoal(new GoalNear(owner.position.x,owner.position.y,owner.position.z,5));return;}
       const plan=await this.brain.plan("Act naturally as a Minecraft companion. Choose one small useful action from the current state. Do not be destructive.",state);
       this.lastPlan=Date.now();
       if(plan?.say)this.game.say(plan.say);
