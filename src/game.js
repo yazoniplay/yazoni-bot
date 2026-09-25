@@ -1,12 +1,12 @@
 import pathfinderPackage from "mineflayer-pathfinder";
 const {pathfinder,Movements,goals}=pathfinderPackage;
-import collectBlock from "mineflayer-collectblock";
-import toolPlugin from "mineflayer-tool";
+import {plugin as collectBlockPlugin} from "mineflayer-collectblock";
+import {plugin as toolPlugin} from "mineflayer-tool";
 const {GoalNear,GoalFollow}=goals;
 const FOOD=["bread","cooked_beef","cooked_porkchop","cooked_chicken","cooked_mutton","cooked_salmon","cooked_cod","baked_potato","carrot","apple","beetroot"];
 const DANGER=new Set(["creeper","zombie","skeleton","spider","cave_spider","enderman","witch","drowned","husk","stray","phantom","pillager","vindicator","evoker","ravager","silverfish","endermite"]);
 export class GameController{
-  constructor(bot,memory,config){this.bot=bot;this.memory=memory;this.config=config;bot.loadPlugin(pathfinder);bot.loadPlugin(collectBlock.plugin);bot.loadPlugin(toolPlugin);this.movements=new Movements(bot);this.home=null;this.following=null;this.busy=false;this.lastAction=null;}
+  constructor(bot,memory,config){this.bot=bot;this.memory=memory;this.config=config;bot.loadPlugin(pathfinder);bot.loadPlugin(collectBlockPlugin);bot.loadPlugin(toolPlugin);this.movements=new Movements(bot);this.home=null;this.following=null;this.busy=false;this.lastAction=null;}
   ready(){this.bot.pathfinder.setMovements(this.movements);}
   state(){
     const p=this.bot.entity?.position;
