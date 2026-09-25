@@ -18,6 +18,24 @@ export class BehaviorLoop{
       else this.game.say("Done. Crafted "+(count>1?count+" ":"")+item+".");
       return;
     }
+    const direction=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?(?:mine|dig)\\s+(up|down|above|below)(?:\\s+(?:for|please|now))?$/i);
+    if(direction){
+      const dir=direction[1].toLowerCase();
+      const normalized=dir==="above"?"up":dir==="below"?"down":dir;
+      this.game.cancelMovement();
+      this.game.say("Got it — digging "+normalized+".");
+      const ok=await this.game.action({action:"mine_direction",item:normalized,count:8});
+      this.game.memory.remember(this.config.owner,"action","explicit mine "+normalized+" => "+(ok?"ok":"failed"),ok?1:3);
+      if(!ok)this.game.say("I couldn't safely make progress "+normalized+" from here.");
+      return;
+    }
+    if(/^(get out|escape|i'm stuck|im stuck)$/i.test(text)){
+      this.game.cancelMovement();
+      this.game.say("Alright, getting us unstuck.");
+      const ok=await this.game.action({action:"explore"});
+      if(!ok)this.game.say("I can't find a route from here yet.");
+      return;
+    }
     if(mine){
       const item=mine[1].trim().replace(/\\s+/g," ");
       this.game.cancelMovement();
