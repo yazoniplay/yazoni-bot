@@ -3,7 +3,7 @@ import path from "node:path";
 import {execFileSync,spawn} from "node:child_process";
 
 const root=path.resolve(".mindcraft");
-const repo="https://github.com/mindcraft-bots/mindcraft.git";
+const repoUrl="https://github.com/mindcraft-bots/mindcraft.git";
 const ref="v0.1.4";
 
 function run(cmd,args,cwd=process.cwd()){
@@ -12,13 +12,16 @@ function run(cmd,args,cwd=process.cwd()){
 }
 
 if(!fs.existsSync(path.join(root,"main.js"))){
-  run("git",["clone","--depth","1","--branch",ref,repo,root]);
-  const pkgPath=path.join(root,"package.json");
-  const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
-  pkg.dependencies.mineflayer="4.33.0";
-  fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\\n");
-  run("npm",["install","--no-audit","--no-fund"],root);
+  if(fs.existsSync(root)) fs.rmSync(root,{recursive:true,force:true});
+  run("git",["clone","--depth","1","--branch",ref,repoUrl,root]);
 }
+
+const pkgPath=path.join(root,"package.json");
+const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
+pkg.dependencies={...(pkg.dependencies||{}),mineflayer:"4.33.0"};
+fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\n");
+
+run("npm",["install","--no-audit","--no-fund"],root);
 
 fs.mkdirSync(path.join(root,"profiles"),{recursive:true});
 const profile={
