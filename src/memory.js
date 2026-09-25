@@ -1,15 +1,76 @@
 import fs from "node:fs";
 import path from "node:path";
-import Database from "better-sqlite3";
-export class Memory{
-  constructor(file){
-    fs.mkdirSync(path.dirname(file),{recursive:true});this.db=new Database(file);this.db.pragma("journal_mode=WAL");
-    this.db.exec("CREATE TABLE IF NOT EXISTS memories(id INTEGER PRIMARY KEY AUTOINCREMENT,player TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,importance INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL);CREATE INDEX IF NOT EXISTS idx_mem_player ON memories(player,created_at);CREATE TABLE IF NOT EXISTS world_memory(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at INTEGER NOT NULL);");
+
+export class Memory {
+  constructor(file) {
+    const jsonFile = file.endsWith(".json") ? file : file.replace(/\.[^.]+$/, ".json");
+    fs.mkdirSync(path.dirname(jsonFile), { recursive: true });
+    this.file = jsonFile;
+    this.data = { nextId: 1, memories: [], world: {} };
+    try {
+      if (fs.existsSync(this.file)) {
+        const parsed = JSON.parse(fs.readFileSync(this.file, "utf8"));
+        if (parsed && typeof parsed === "object") {
+          this.data = {
+            nextId: Number(parsed.nextId) || 1,
+            memories: Array.isArray(parsed.memories) ? parsed.memories : [],
+            world: parsed.world && typeof parsed.world === "object" ? parsed.world : {}
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[Memory] Could not load memory file:", e.message);
+    }
   }
-  remember(player,kind,content,importance=1){this.db.prepare("INSERT INTO memories(player,kind,content,importance,created_at) VALUES(?,?,?,?,?)").run(player,kind,String(content),Math.max(1,Math.min(10,Number(importance)||1)),Date.now());}
-  recent(player,limit=24){return this.db.prepare("SELECT kind,content,importance,created_at FROM memories WHERE player=? ORDER BY id DESC LIMIT ?").all(player,limit).reverse();}
-  important(player,limit=16){return this.db.prepare("SELECT kind,content,importance,created_at FROM memories WHERE player=? ORDER BY importance DESC,id DESC LIMIT ?").all(player,limit);}
-  setWorld(key,value){this.db.prepare("INSERT INTO world_memory(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").run(key,JSON.stringify(value),Date.now());}
-  getWorld(key,fallback=null){const r=this.db.prepare("SELECT value FROM world_memory WHERE key=?").get(key);if(!r)return fallback;try{return JSON.parse(r.value)}catch{return r.value}}
-  close(){this.db.close();}
+
+  save() {
+    const temp = this.file + ".tmp";
+    fs.writeFileSync(temp, JSON.stringify(this.data));
+    fs.renameSync(temp, this.file);
+  }
+
+  remember(player, kind, content, importance = 1) {
+    this.data.memories.push({
+      id: this.data.nextId++,
+      player: String(player),
+      kind: String(kind),
+      content: String(content),
+      importance: Math.max(1, Math.min(10, Number(importance) || 1)),
+      created_at: Date.now()
+    });
+    // Keep the persistent memory bounded so the bot cannot grow the file forever.
+    if (this.data.memories.length > 5000) this.data.memories.splice(0, this.data.memories.length - 5000);
+    this.save();
+  }
+
+  recent(player, limit = 24) {
+    return this.data.memories
+      .filter(m => m.player === String(player))
+      .sort((a, b) => b.id - a.id)
+      .slice(0, Number(limit) || 24)
+      .reverse()
+      .map(({ kind, content, importance, created_at }) => ({ kind, content, importance, created_at }));
+  }
+
+  important(player, limit = 16) {
+    return this.data.memories
+      .filter(m => m.player === String(player))
+      .sort((a, b) => b.importance - a.importance || b.id - a.id)
+      .slice(0, Number(limit) || 16)
+      .map(({ kind, content, importance, created_at }) => ({ kind, content, importance, created_at }));
+  }
+
+  setWorld(key, value) {
+    this.data.world[String(key)] = { value, updated_at: Date.now() };
+    this.save();
+  }
+
+  getWorld(key, fallback = null) {
+    const entry = this.data.world[String(key)];
+    return entry ? entry.value : fallback;
+  }
+
+  close() {
+    this.save();
+  }
 }
