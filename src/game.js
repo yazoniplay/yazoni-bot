@@ -19,7 +19,7 @@ export class GameController{
   say(msg){if(msg)this.bot.chat(String(msg).replace(/\s+/g," ").slice(0,240));}
   follow(name){const t=this.bot.players[name]?.entity;if(!t)return false;this.following=name;this.bot.pathfinder.setGoal(new GoalFollow(t,2),true);return true;}
   lead(name,distance=6){const t=this.bot.players[name]?.entity;if(!t)return false;this.following=name;const v=t.velocity||{x:0,y:0,z:0},p=t.position,s=Math.hypot(v.x||0,v.z||0),lead=Math.min(10,Math.max(distance,s*8));this.bot.pathfinder.setGoal(new GoalNear(p.x+(v.x||0)*lead,p.y,p.z+(v.z||0)*lead,Math.max(2,distance)));return true;}
-  async hit(targetName){const p=this.bot.entity?.position;if(!p)return false;const target=Object.values(this.bot.entities||{}).filter(e=>e?.position&&DANGER.has(e.name)&&e.name===targetName&&p.distanceTo(e.position)<4.5).sort((a,b)=>p.distanceTo(a.position)-p.distanceTo(b.position))[0];if(!target)return false;try{await this.bot.lookAt(target.position.offset(0,target.height?target.height*0.55:0.8,0),true);this.bot.attack(target);this.lastAction="hit "+targetName;return true}catch(e){this.memory.remember(this.config.owner,"failure","hit "+targetName+": "+e.message,2);return false;}}
+  async hit(targetName=""){const p=this.bot.entity?.position;if(!p)return false;const wanted=String(targetName||"").toLowerCase().replace(/[_-]+/g," ").trim();let target=Object.values(this.bot.entities||{}).filter(e=>e?.position&&DANGER.has(e.name)&&(!wanted||e.name===wanted||e.name.replace(/_/g," ")===wanted)).sort((a,b)=>p.distanceTo(a.position)-p.distanceTo(b.position))[0];if(!target)return false;try{this.following=null;this.bot.pathfinder.setGoal(new GoalNear(target.position.x,target.position.y,target.position.z,2));await new Promise(r=>setTimeout(r,150));for(let i=0;i<3;i++){if(!target.position||!this.bot.entity)break;const d=this.bot.entity.position.distanceTo(target.position);if(d>3.6){this.bot.pathfinder.setGoal(new GoalNear(target.position.x,target.position.y,target.position.z,2));await new Promise(r=>setTimeout(r,250));continue;}await this.bot.lookAt(target.position.offset(0,target.height?target.height*0.55:0.8,0),true);this.bot.attack(target);await new Promise(r=>setTimeout(r,650));}this.lastAction="hit "+target.name;return true}catch(e){this.memory.remember(this.config.owner,"failure","hit "+(target.name||wanted)+": "+e.message,2);return false;}}
   async drop(item,count=1){const raw=String(item||"").toLowerCase().replace(/[_-]+/g," ").trim(),name=(ALIASES[raw]||raw.replace(/\s+/g,"_")),stack=this.bot.inventory.items().find(i=>i.name===name);if(!stack)return false;const n=Math.max(1,Math.min(stack.count,Number(count)||1));try{await this.bot.toss(stack.type,null,n);this.lastAction="dropped "+n+" "+name;return true}catch(e){this.memory.remember(this.config.owner,"failure","drop "+name+": "+e.message,2);return false;}}
   cancelMovement(){this.following=null;this.bot.pathfinder.setGoal(null);}
   stop(){this.cancelMovement();this.busy=false;}
@@ -81,12 +81,21 @@ export class GameController{
   }
   async collect(item,count=1){
     const raw=String(item||"").toLowerCase().replace(/[_-]+/g," ").trim(),wanted=(ALIASES[raw]||raw.replace(/\s+/g,"_"));
-    const n=Math.max(1,Math.min(32,Number(count)||1));
+    const n=Math.max(1,Math.min(16,Number(count)||1));
     const blocks=this.bot.findBlocks({matching:b=>b&&b.name===wanted,maxDistance:64,count:n});if(!blocks.length)return false;
     try{this.busy=true;
-      const targetBlocks=blocks.map(p=>this.bot.blockAt(p)).filter(Boolean).slice(0,n);
-      for(const block of targetBlocks)await this.equipBestTool(block);
-      await this.bot.collectBlock.collect(targetBlocks);this.lastAction="collected "+wanted;return true}catch(e){this.memory.remember(this.config.owner,"failure","collect "+wanted+": "+e.message,3);return false}finally{this.busy=false}}
+      let done=0;
+      for(const pos of blocks.slice(0,n)){
+        const block=this.bot.blockAt(pos);if(!block)continue;
+        await this.bot.pathfinder.goto(new GoalNear(block.position.x,block.position.y,block.position.z,3));
+        await this.equipBestTool(block);
+        if(!this.bot.canDigBlock(block))continue;
+        await this.bot.dig(block,true);
+        done++;
+      }
+      this.lastAction="collected "+done+" "+wanted;
+      return done>0;
+    }catch(e){this.memory.remember(this.config.owner,"failure","collect "+wanted+": "+e.message,3);return false}finally{this.busy=false}}
   async craft(item,count=1,depth=0){
     if(this.busy||depth>6)return false;
     const aliases={"crafting table":"crafting_table","craft table":"crafting_table","wood pickaxe":"wooden_pickaxe","wooden pick":"wooden_pickaxe","stone pickaxe":"stone_pickaxe","iron pickaxe":"iron_pickaxe","wood axe":"wooden_axe","wooden axe":"wooden_axe","stone axe":"stone_axe","iron axe":"iron_axe","wood sword":"wooden_sword","wooden sword":"wooden_sword","stone sword":"stone_sword","iron sword":"iron_sword"};
@@ -119,5 +128,5 @@ export class GameController{
   async sleep(){const bed=this.bot.findBlock({matching:b=>b&&b.name.endsWith("_bed"),maxDistance:24});if(!bed)return false;try{await this.bot.sleep(bed);this.lastAction="slept";return true}catch{return false}}
   avoid(){const p=this.bot.entity?.position;if(!p)return false;const danger=Object.values(this.bot.entities||{}).find(e=>e?.position&&DANGER.has(e.name)&&p.distanceTo(e.position)<8);if(!danger)return false;const dx=p.x-danger.position.x,dz=p.z-danger.position.z,len=Math.hypot(dx,dz)||1;this.goto(p.x+dx/len*12,p.y,p.z+dz/len*12);this.lastAction="moved away from danger";return true}
   explore(){const p=this.bot.entity?.position;if(!p)return false;const a=Math.random()*Math.PI*2,d=32+Math.random()*64;return this.goto(Math.floor(p.x+Math.cos(a)*d),Math.floor(p.y),Math.floor(p.z+Math.sin(a)*d))}
-  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"zombie");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
+  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
 }
