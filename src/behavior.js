@@ -6,6 +6,18 @@ export class BehaviorLoop{
   async onOwnerMessage(message){
     const text=this.normalizeMessage(message);
     const mine=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?mine\\s+(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:for|please|now))?$/i);
+    const craft=text.match(/^(?:(?:go|please)\\s+)?(?:and\\s+)?craft\\s+(?:(\\d+)\\s+)?(?:a\\s+|an\\s+|some\\s+)?(.+?)(?:\\s+(?:for|please|now))?$/i);
+    if(craft){
+      const count=Math.max(1,Math.min(64,Number(craft[1])||1));
+      const item=craft[2].trim().replace(/\\s+/g," ");
+      this.game.cancelMovement();
+      this.game.say("Got it — crafting "+(count>1?count+" ":"")+item+".");
+      const ok=await this.game.action({action:"craft",item,count});
+      this.game.memory.remember(this.config.owner,"action","explicit craft "+item+" x"+count+" => "+(ok?"ok":"failed"),ok?1:3);
+      if(!ok)this.game.say("I couldn't craft "+item+" with the resources available, so I stopped.");
+      else this.game.say("Done. Crafted "+(count>1?count+" ":"")+item+".");
+      return;
+    }
     if(mine){
       const item=mine[1].trim().replace(/\\s+/g," ");
       this.game.cancelMovement();
