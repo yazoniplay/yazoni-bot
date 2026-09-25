@@ -3,7 +3,9 @@ const {pathfinder,Movements,goals}=pathfinderPackage;
 import {plugin as collectBlockPlugin} from "mineflayer-collectblock";
 import {plugin as toolPlugin} from "mineflayer-tool";
 const {GoalNear,GoalFollow}=goals;
-const FOOD=["bread","cooked_beef","cooked_porkchop","cooked_chicken","cooked_mutton","cooked_salmon","cooked_cod","baked_potato","carrot","apple","beetroot"];
+const FOOD=["bread","cooked_beef","cooked_porkchop","cooked_chicken","cooked_mutton","cooked_salmon","cooked_cod","baked_potato","carrot","apple","beetroot","melon_slice","sweet_berries","dried_kelp"];
+const ALIASES={"hay bale":"hay_block","hay bales":"hay_block","wood":"oak_log","logs":"oak_log","planks":"oak_planks","cobble":"cobblestone","cobblestone":"cobblestone","stone":"stone","coal":"coal_ore","iron":"iron_ore","gold":"gold_ore","diamond":"diamond_ore","redstone":"redstone_ore","lapis":"lapis_ore"};
+const ARMOR=["helmet","chestplate","leggings","boots"];
 const DANGER=new Set(["creeper","zombie","skeleton","spider","cave_spider","enderman","witch","drowned","husk","stray","phantom","pillager","vindicator","evoker","ravager","silverfish","endermite"]);
 export class GameController{
   constructor(bot,memory,config){this.bot=bot;this.memory=memory;this.config=config;bot.loadPlugin(pathfinder);bot.loadPlugin(collectBlockPlugin);bot.loadPlugin(toolPlugin);this.movements=null;this.home=null;this.following=null;this.busy=false;this.lastAction=null;}
@@ -24,8 +26,42 @@ export class GameController{
   goto(x,y,z){if([x,y,z].some(v=>!Number.isFinite(Number(v))))return false;this.following=null;this.bot.pathfinder.setGoal(new GoalNear(Number(x),Number(y),Number(z),2));return true;}
   setHome(){if(this.bot.entity)this.home=this.bot.entity.position.clone();}
   goHome(){return this.home?this.goto(this.home.x,this.home.y,this.home.z):false;}
-  async eat(){const item=this.bot.inventory.items().find(i=>FOOD.includes(i.name));if(!item)return false;try{await this.bot.equip(item,"hand");await this.bot.consume();this.lastAction="ate "+item.name;return true}catch{return false}}
-  async collect(item,count=1){const wanted=String(item||"").toLowerCase();const n=Math.max(1,Math.min(32,Number(count)||1));const blocks=this.bot.findBlocks({matching:b=>b&&b.name.includes(wanted),maxDistance:64,count:n});if(!blocks.length)return false;try{this.busy=true;await this.bot.collectBlock.collect(blocks.map(p=>this.bot.blockAt(p)).filter(Boolean).slice(0,n));this.lastAction="collected "+wanted;return true}catch(e){this.memory.remember(this.config.owner,"failure","collect "+wanted+": "+e.message,3);return false}finally{this.busy=false}}
+  async eat(){
+    const item=this.bot.inventory.items().find(i=>FOOD.includes(i.name));
+    if(!item)return false;
+    try{await this.bot.equip(item,"hand");await this.bot.consume();this.lastAction="ate "+item.name;return true}
+    catch(e){this.memory.remember(this.config.owner,"failure","eat: "+e.message,2);return false}
+  }
+  async equipBestTool(block){
+    try{if(this.bot.tool?.equipForBlock){await this.bot.tool.equipForBlock(block);return true;}}
+    catch{}
+    return false;
+  }
+  async equipArmor(){
+    let equipped=0;
+    for(const slot of ARMOR){
+      const current=this.bot.inventory.slots.find(i=>i?.name?.endsWith("_"+slot));
+      if(!current)continue;
+      try{await this.bot.equip(current,slot);equipped++;}catch{}
+    }
+    return equipped>0;
+  }
+  async pickupNearby(){
+    const p=this.bot.entity?.position;if(!p)return false;
+    const drops=Object.values(this.bot.entities||{}).filter(e=>e?.position&&(e.name==="item"||e.type==="object")&&p.distanceTo(e.position)<8);
+    let picked=0;
+    for(const e of drops.slice(0,8)){try{await this.bot.pathfinder.goto(new GoalNear(e.position.x,e.position.y,e.position.z,1));picked++;}catch{}}
+    if(picked)this.lastAction="picked up "+picked+" nearby drops";
+    return picked>0;
+  }
+  async collect(item,count=1){
+    const raw=String(item||"").toLowerCase().replace(/[_-]+/g," ").trim(),wanted=(ALIASES[raw]||raw.replace(/\s+/g,"_"));
+    const n=Math.max(1,Math.min(32,Number(count)||1));
+    const blocks=this.bot.findBlocks({matching:b=>b&&b.name===wanted,maxDistance:64,count:n});if(!blocks.length)return false;
+    try{this.busy=true;
+      const targetBlocks=blocks.map(p=>this.bot.blockAt(p)).filter(Boolean).slice(0,n);
+      for(const block of targetBlocks)await this.equipBestTool(block);
+      await this.bot.collectBlock.collect(targetBlocks);this.lastAction="collected "+wanted;return true}catch(e){this.memory.remember(this.config.owner,"failure","collect "+wanted+": "+e.message,3);return false}finally{this.busy=false}}
   async craft(item,count=1,depth=0){
     const name=String(item||"").toLowerCase(),wanted=Math.max(1,Math.min(64,Number(count)||1));if(depth>6)return false;
     const have=this.bot.inventory.items().filter(i=>i.name===name).reduce((n,i)=>n+i.count,0);if(have>=wanted)return true;
@@ -52,5 +88,5 @@ export class GameController{
   async sleep(){const bed=this.bot.findBlock({matching:b=>b&&b.name.endsWith("_bed"),maxDistance:24});if(!bed)return false;try{await this.bot.sleep(bed);this.lastAction="slept";return true}catch{return false}}
   avoid(){const p=this.bot.entity?.position;if(!p)return false;const danger=Object.values(this.bot.entities||{}).find(e=>e?.position&&DANGER.has(e.name)&&p.distanceTo(e.position)<8);if(!danger)return false;const dx=p.x-danger.position.x,dz=p.z-danger.position.z,len=Math.hypot(dx,dz)||1;this.goto(p.x+dx/len*12,p.y,p.z+dz/len*12);this.lastAction="moved away from danger";return true}
   explore(){const p=this.bot.entity?.position;if(!p)return false;const a=Math.random()*Math.PI*2,d=32+Math.random()*64;return this.goto(Math.floor(p.x+Math.cos(a)*d),Math.floor(p.y),Math.floor(p.z+Math.sin(a)*d))}
-  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"zombie");case"drop":return this.drop(s.item,s.count||1);case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
+  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"zombie");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
 }
