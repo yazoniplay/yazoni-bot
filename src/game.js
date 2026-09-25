@@ -1,4 +1,5 @@
-import {pathfinder,Movements,goals} from "mineflayer-pathfinder";
+import pathfinderPackage from "mineflayer-pathfinder";
+const {pathfinder,Movements,goals}=pathfinderPackage;
 import collectBlock from "mineflayer-collectblock";
 import toolPlugin from "mineflayer-tool";
 const {GoalNear,GoalFollow}=goals;
