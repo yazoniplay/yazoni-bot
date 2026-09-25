@@ -18,7 +18,9 @@ function makeBot(){
   bot.on("playerLeft",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","left the server",1);});
   bot.on("health",()=>{if(bot.food<12||bot.health<8)behavior?.onOwnerMessage("").catch(()=>{});});
   bot.on("death",()=>{game.stop();memory.remember(config.owner,"event","I died and will recover.",5);setTimeout(()=>bot.chat("I am back."),2500);});
-  bot.on("kicked",r=>console.error("[YazoniBot] Kicked:",r));bot.on("error",e=>console.error("[YazoniBot] Error:",e));
+  bot.on("kicked",r=>console.error("[YazoniBot] Kicked:",r));
+  bot.on("error",e=>console.error("[YazoniBot] Error:",e));
+  bot.on("end",reason=>console.warn("[YazoniBot] Minecraft connection ended:",reason));
   bot.on("end",reason=>{behavior?.stop();console.log("[YazoniBot] Disconnected:",reason);clearTimeout(reconnectTimer);reconnectTimer=setTimeout(makeBot,config.reconnectMs);});
 }
 process.on("SIGINT",()=>{behavior?.stop();memory.close();try{bot?.quit("shutdown")}catch{}process.exit(0)});
