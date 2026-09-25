@@ -4,7 +4,7 @@ import {plugin as collectBlockPlugin} from "mineflayer-collectblock";
 import {plugin as toolPlugin} from "mineflayer-tool";
 const {GoalNear,GoalFollow}=goals;
 const FOOD=["bread","cooked_beef","cooked_porkchop","cooked_chicken","cooked_mutton","cooked_salmon","cooked_cod","baked_potato","carrot","apple","beetroot","melon_slice","sweet_berries","dried_kelp"];
-const ALIASES={"hay bale":"hay_block","hay bales":"hay_block","wood":"oak_log","logs":"oak_log","planks":"oak_planks","cobble":"cobblestone","cobblestone":"cobblestone","stone":"stone","coal":"coal_ore","iron":"iron_ore","gold":"gold_ore","diamond":"diamond_ore","redstone":"redstone_ore","lapis":"lapis_ore"};
+const ALIASES={"hay bale":"hay_block","hay bales":"hay_block","hay block":"hay_block","hay blocks":"hay_block","wood":"oak_log","logs":"oak_log","planks":"oak_planks","cobble":"cobblestone","cobblestone":"cobblestone","stone":"stone","coal":"coal_ore","iron":"iron_ore","gold":"gold_ore","diamond":"diamond_ore","redstone":"redstone_ore","lapis":"lapis_ore"};
 const ARMOR=["helmet","chestplate","leggings","boots"];
 const DANGER=new Set(["creeper","zombie","skeleton","spider","cave_spider","enderman","witch","drowned","husk","stray","phantom","pillager","vindicator","evoker","ravager","silverfish","endermite"]);
 export class GameController{
@@ -21,7 +21,8 @@ export class GameController{
   lead(name,distance=6){const t=this.bot.players[name]?.entity;if(!t)return false;this.following=name;const v=t.velocity||{x:0,y:0,z:0},p=t.position,s=Math.hypot(v.x||0,v.z||0),lead=Math.min(10,Math.max(distance,s*8));this.bot.pathfinder.setGoal(new GoalNear(p.x+(v.x||0)*lead,p.y,p.z+(v.z||0)*lead,Math.max(2,distance)));return true;}
   async hit(targetName){const p=this.bot.entity?.position;if(!p)return false;const target=Object.values(this.bot.entities||{}).filter(e=>e?.position&&DANGER.has(e.name)&&e.name===targetName&&p.distanceTo(e.position)<4.5).sort((a,b)=>p.distanceTo(a.position)-p.distanceTo(b.position))[0];if(!target)return false;try{await this.bot.lookAt(target.position.offset(0,target.height?target.height*0.55:0.8,0),true);this.bot.attack(target);this.lastAction="hit "+targetName;return true}catch(e){this.memory.remember(this.config.owner,"failure","hit "+targetName+": "+e.message,2);return false;}}
   async drop(item,count=1){const raw=String(item||"").toLowerCase().replace(/[_-]+/g," ").trim(),name=(ALIASES[raw]||raw.replace(/\s+/g,"_")),stack=this.bot.inventory.items().find(i=>i.name===name);if(!stack)return false;const n=Math.max(1,Math.min(stack.count,Number(count)||1));try{await this.bot.toss(stack.type,null,n);this.lastAction="dropped "+n+" "+name;return true}catch(e){this.memory.remember(this.config.owner,"failure","drop "+name+": "+e.message,2);return false;}}
-  stop(){this.following=null;this.bot.pathfinder.setGoal(null);this.busy=false;}
+  cancelMovement(){this.following=null;this.bot.pathfinder.setGoal(null);}
+  stop(){this.cancelMovement();this.busy=false;}
   come(name){const p=this.bot.players[name]?.entity;if(!p)return false;this.following=null;this.bot.pathfinder.setGoal(new GoalNear(p.position.x,p.position.y,p.position.z,2));return true;}
   goto(x,y,z){if([x,y,z].some(v=>!Number.isFinite(Number(v))))return false;this.following=null;this.bot.pathfinder.setGoal(new GoalNear(Number(x),Number(y),Number(z),2));return true;}
   setHome(){if(this.bot.entity)this.home=this.bot.entity.position.clone();}
