@@ -9,7 +9,7 @@ export class BehaviorLoop{
     try{
       if(this.config.autoFollow&&!this.game.following){const owner=this.game.bot.players[this.config.owner]?.entity;if(owner){const d=this.game.bot.entity.position.distanceTo(owner.position);if(d>this.config.followDistance&&d<80)this.game.follow(this.config.owner);}}
       const state=this.game.state();
-      if(state.food!==undefined&&state.food<8)await this.game.action({action:"eat"});
+      if(state.food!==undefined&&state.food<14)await this.game.action({action:"eat"});await this.game.action({action:"equip"});if(!this.game.busy)await this.game.action({action:"pickup"});
       const thought=await this.brain.think(input,state);this.lastPlanAt=Date.now();
       if(thought.reply&&input)this.game.say(thought.reply);
       for(const step of (Array.isArray(thought.steps)?thought.steps.slice(0,this.config.maxPlanSteps):[])){
