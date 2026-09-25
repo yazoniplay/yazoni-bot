@@ -1,0 +1,6 @@
+{
+  "name": "YazoniBot",
+  "model": "gemini-3.5-flash-lite",
+  "cooldown": 5000,
+  "speak_model": "google/gemini-2.5-flash-preview-tts/Kore"
+}
