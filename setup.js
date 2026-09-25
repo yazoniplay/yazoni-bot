@@ -13,6 +13,10 @@ function run(cmd,args,cwd=process.cwd()){
 
 if(!fs.existsSync(path.join(root,"main.js"))){
   run("git",["clone","--depth","1","--branch",ref,repo,root]);
+  const pkgPath=path.join(root,"package.json");
+  const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
+  pkg.dependencies.mineflayer="4.33.0";
+  fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\\n");
   run("npm",["install","--no-audit","--no-fund"],root);
 }
 
