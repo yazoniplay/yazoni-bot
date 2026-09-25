@@ -24,6 +24,9 @@ export class BehaviorLoop{
     if(/^(?:please\\s+)?follow(?:\\s+me)?$/i.test(text)){await run({action:"follow_owner"},"following you");return;}
     if(/^(?:come|come here|get here|come to me)$/i.test(text)){await run({action:"come_owner"},"coming to you");return;}
 
+    const hit=text.match(/^(?:hit|attack|fight|kill)\s*(.*)$/i);
+    if(hit){const target=hit[1].trim().replace(/^(?:the|a|an)\s+/i,"");await run({action:"hit",item:target},"fighting "+(target||"the nearest hostile mob"));return;}
+
     const direction=text.match(/^(?:please\\s+)?(?:mine|dig|break)\\s+(up|down|above|below)(?:\\s+.*)?$/i);
     if(direction){
       const dir=direction[1].toLowerCase()==="above"?"up":direction[1].toLowerCase()==="below"?"down":direction[1].toLowerCase();
