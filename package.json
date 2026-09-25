@@ -1,1 +1,12 @@
-{"name":"yazoni-bot","version":"2.0.0","private":true,"type":"module","scripts":{"start":"node src/index.js","dev":"node --watch src/index.js","check":"node --check src/index.js && node --check src/game.js && node --check src/ai.js && node --check src/behavior.js && node --check src/memory.js"},"dependencies":{"mineflayer":"^4.26.0","mineflayer-pathfinder":"^2.4.5","mineflayer-collectblock":"^1.6.0","mineflayer-tool":"^1.2.0","@google/genai":"^2.0.0","dotenv":"^16.4.7"}}
+{
+  "name": "yazoni-bot",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "20.x" },
+  "scripts": {
+    "start": "node setup.js --start",
+    "setup": "node setup.js",
+    "check": "node --check setup.js"
+  }
+}
