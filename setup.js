@@ -5,6 +5,7 @@ import {execFileSync,spawn} from "node:child_process";
 const root=path.resolve(".mindcraft");
 const repoUrl="https://github.com/mindcraft-bots/mindcraft.git";
 const ref="v0.1.4";
+const mineflayerVersion=process.env.MINEFLAYER_VERSION||"4.35.0";
 
 function run(cmd,args,cwd=process.cwd()){
   console.log("[YazoniBot]",cmd,args.join(" "));
@@ -18,7 +19,7 @@ if(!fs.existsSync(path.join(root,"main.js"))){
 
 const pkgPath=path.join(root,"package.json");
 const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
-pkg.dependencies={...(pkg.dependencies||{}),mineflayer:"4.33.0"};
+pkg.dependencies={...(pkg.dependencies||{}),mineflayer:mineflayerVersion};
 fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\n");
 
 run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
