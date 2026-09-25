@@ -6,8 +6,8 @@ const {GoalNear,GoalFollow}=goals;
 const FOOD=["bread","cooked_beef","cooked_porkchop","cooked_chicken","cooked_mutton","cooked_salmon","cooked_cod","baked_potato","carrot","apple","beetroot"];
 const DANGER=new Set(["creeper","zombie","skeleton","spider","cave_spider","enderman","witch","drowned","husk","stray","phantom","pillager","vindicator","evoker","ravager","silverfish","endermite"]);
 export class GameController{
-  constructor(bot,memory,config){this.bot=bot;this.memory=memory;this.config=config;bot.loadPlugin(pathfinder);bot.loadPlugin(collectBlockPlugin);bot.loadPlugin(toolPlugin);this.movements=new Movements(bot);this.home=null;this.following=null;this.busy=false;this.lastAction=null;}
-  ready(){this.bot.pathfinder.setMovements(this.movements);}
+  constructor(bot,memory,config){this.bot=bot;this.memory=memory;this.config=config;bot.loadPlugin(pathfinder);bot.loadPlugin(collectBlockPlugin);bot.loadPlugin(toolPlugin);this.movements=null;this.home=null;this.following=null;this.busy=false;this.lastAction=null;}
+  ready(){this.movements=new Movements(this.bot);this.bot.pathfinder.setMovements(this.movements);}
   state(){
     const p=this.bot.entity?.position;
     const entities=Object.values(this.bot.entities||{}).filter(e=>e?.position).slice(0,40).map(e=>({type:e.type,name:e.name||e.displayName||"",distance:p?+p.distanceTo(e.position).toFixed(1):null}));
