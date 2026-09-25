@@ -64,7 +64,11 @@ export class GameController{
       for(const block of targetBlocks)await this.equipBestTool(block);
       await this.bot.collectBlock.collect(targetBlocks);this.lastAction="collected "+wanted;return true}catch(e){this.memory.remember(this.config.owner,"failure","collect "+wanted+": "+e.message,3);return false}finally{this.busy=false}}
   async craft(item,count=1,depth=0){
-    const name=String(item||"").toLowerCase(),wanted=Math.max(1,Math.min(64,Number(count)||1));if(depth>6)return false;
+    if(this.busy||depth>6)return false;
+    const aliases={"crafting table":"crafting_table","craft table":"crafting_table","wood pickaxe":"wooden_pickaxe","wooden pick":"wooden_pickaxe","stone pickaxe":"stone_pickaxe","iron pickaxe":"iron_pickaxe","wood axe":"wooden_axe","wooden axe":"wooden_axe","stone axe":"stone_axe","iron axe":"iron_axe","wood sword":"wooden_sword","wooden sword":"wooden_sword","stone sword":"stone_sword","iron sword":"iron_sword"};
+    const raw=String(item||"").toLowerCase().replace(/[_-]+/g," ").trim();
+    const name=aliases[raw]||raw.replace(/\\s+/g,"_");
+    const wanted=Math.max(1,Math.min(64,Number(count)||1));
     const have=this.bot.inventory.items().filter(i=>i.name===name).reduce((n,i)=>n+i.count,0);if(have>=wanted)return true;
     const id=this.bot.registry.itemsByName[name]?.id;if(!id)return false;const recipes=this.bot.recipesAll(id,null,1,true);if(!recipes.length)return false;
     const recipe=recipes[0],resultCount=Math.max(1,recipe.result?.count||1),times=Math.ceil((wanted-have)/resultCount),ingredients=[];
@@ -78,7 +82,9 @@ export class GameController{
     }
     try{
       this.busy=true;let table=null;if(recipe.requiresTable)table=this.bot.findBlock({matching:b=>b?.name==="crafting_table",maxDistance:16});if(recipe.requiresTable&&!table)return false;
-      await this.bot.craft(recipe,times,table||undefined);this.lastAction="crafted "+name;return true;
+      const craftPromise=this.bot.craft(recipe,times,table||undefined);
+      await Promise.race([craftPromise,new Promise((_,reject)=>setTimeout(()=>reject(new Error("craft timed out")),15000))]);
+      this.lastAction="crafted "+name;return true;
     }catch(e){this.memory.remember(this.config.owner,"failure","craft "+name+": "+e.message,3);return false}finally{this.busy=false}
   }
   async smelt(item,count=1){const furnace=this.bot.findBlock({matching:b=>b?.name==="furnace"||b?.name==="blast_furnace",maxDistance:24});if(!furnace)return false;const input=this.bot.inventory.items().find(i=>i.name===item),fuel=this.bot.inventory.items().find(i=>["coal","charcoal","oak_planks","spruce_planks","birch_planks","acacia_planks","jungle_planks","dark_oak_planks","mangrove_planks","cherry_planks"].includes(i.name));if(!input||!fuel)return false;try{const w=await this.bot.openFurnace(furnace);await w.putInput(input.type,null,Math.min(input.count,Number(count)||1));await w.putFuel(fuel.type,null,Math.min(fuel.count,8));await new Promise(r=>setTimeout(r,Math.min(30000,Math.max(4000,(Number(count)||1)*2200))));await w.takeOutput();w.close();this.lastAction="smelted "+item;return true}catch(e){this.memory.remember(this.config.owner,"failure","smelt "+item+": "+e.message,3);return false}}
