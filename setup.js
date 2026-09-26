@@ -47,6 +47,81 @@ if(fs.existsSync(skillsPath)){
     '    let player = bot.players[username].entity\n',
     '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n'
   );
+
+  // Replace Mindcraft's fragile GoalFollow implementation with a resilient controller.
+  // Recent mineflayer-pathfinder versions have an open GoalFollow regression on servers newer
+  // than 1.21.8, so the controller uses GoalNear + direct movement/jump fallback.
+  const followStart = skills.indexOf("export async function followPlayer(bot, username, distance=4) {");
+  const followEnd = skills.indexOf("\n\nexport async function moveAway(", followStart);
+  if(followStart !== -1 && followEnd !== -1){
+    const robustFollow = `export async function followPlayer(bot, username, distance=4) {
+    const playerEntry = bot.players?.[username];
+    const player = playerEntry?.entity;
+    if (!player) {
+        log(bot, \`I cannot see \${username} right now.\`);
+        return false;
+    }
+
+    const movements = new pf.Movements(bot);
+    movements.canDig = true;
+    movements.canPlace = true;
+    movements.allowParkour = true;
+    movements.allowSprinting = true;
+    movements.digCost = 1;
+    bot.pathfinder.setMovements(movements);
+    bot.modes.pause('unstuck');
+    bot.modes.pause('elbow_room');
+
+    log(bot, \`Actively following \${username}.\`);
+
+    try {
+        while (!bot.interrupt_code && bot.entity && player.isValid !== false) {
+            const d = bot.entity.position.distanceTo(player.position);
+
+            if (d > 4) {
+                try {
+                    bot.pathfinder.setGoal(new pf.goals.GoalNear(
+                        player.position.x,
+                        player.position.y,
+                        player.position.z,
+                        Math.max(1.5, distance)
+                    ));
+                } catch (_) {}
+
+                if (d < 14) {
+                    try {
+                        await bot.lookAt(player.position.offset(0, 1.5, 0), true);
+                        bot.setControlState('forward', true);
+                        bot.setControlState('sprint', d > 7);
+                        const dy = player.position.y - bot.entity.position.y;
+                        if (dy > 0.45 || d > 9) {
+                            bot.setControlState('jump', true);
+                        }
+                    } catch (_) {}
+                }
+            } else {
+                bot.setControlState('forward', false);
+                bot.setControlState('sprint', false);
+                bot.setControlState('jump', false);
+                if (bot.pathfinder?.isMoving()) bot.pathfinder.setGoal(null);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 250));
+        }
+    } finally {
+        bot.clearControlStates();
+        try { bot.pathfinder.setGoal(null); } catch (_) {}
+        bot.modes.unpause('unstuck');
+        bot.modes.unpause('elbow_room');
+    }
+    return true;
+}
+`;
+    skills=skills.slice(0,followStart)+robustFollow+skills.slice(followEnd);
+  }  skills=skills.replace(
+    '    let player = bot.players[username].entity\n',
+    '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n'
+
   skills=skills.replace(
     '    let player = bot.players[username].entity\n    if (!player)\n        return false;\n',
     '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n    if (!player) {\n        log(bot, \`Could not find \${username}. The player may be offline or not currently loaded.\`);\n        return false;\n    }\n'
@@ -135,22 +210,20 @@ if(fs.existsSync(agentSourcePath)){
                 const __yazoniRunAutonomous=async()=>{
                     const today=new Date().toISOString().slice(0,10);
                     if(today!==__yazoniAutoDay){__yazoniAutoDay=today;__yazoniAutoCalls=0;}
-                    if(__yazoniAutoCalls>=Number(process.env.MAX_AUTONOMY_CALLS_PER_DAY||300)) return;
+                    if(__yazoniAutoCalls>=Number(process.env.MAX_AUTONOMY_CALLS_PER_DAY||500)) return;
                     if(!this.bot || !this.bot.entity || !this.isIdle()) return;
                     __yazoniAutoCalls++;
                     await __yazoniAutonomousThink();
                 };
                 setTimeout(__yazoniRunAutonomous,15000);
-                setInterval(__yazoniRunAutonomous,Number(process.env.AUTONOMY_INTERVAL_MS||180000));
+                setInterval(__yazoniRunAutonomous,Number(process.env.AUTONOMY_INTERVAL_MS||60000));
 `;
   agentSource=agentSource.replace(autoNeedle,autoInject);
 
   fs.writeFileSync(agentSourcePath,agentSource);
   console.log("[YazoniBot] Installed public chat, deterministic owner commands, and autonomous content brain.");
 }
-const presenceModule = `import pf from "mineflayer-pathfinder";
-
-const { Movements, goals } = pf;
+const presenceModule = \`import pf from "mineflayer-pathfinder";
 
 export function installPresence(agent) {
   const originalStart = agent.start.bind(agent);
@@ -164,108 +237,37 @@ export function installPresence(agent) {
       if (bot.__yazoniPresenceStarted) return;
       bot.__yazoniPresenceStarted = true;
 
-      // Keep pathfinding capable of normal Minecraft movement.
-      // The previous version explicitly disabled jumping, digging and parkour.
-      const movements = new Movements(bot);
+      const movements = new pf.Movements(bot);
       movements.canDig = true;
       movements.canPlace = true;
-      movements.allow1by1towers = false;
       movements.allowParkour = true;
       movements.allowSprinting = true;
+      movements.allow1by1towers = false;
+      movements.digCost = 1;
       bot.pathfinder.setMovements(movements);
 
-      let followTimer = null;
-      let followUser = null;
-
-      const stopFollow = () => {
-        if (followTimer) clearInterval(followTimer);
-        followTimer = null;
-        followUser = null;
-        bot.clearControlStates();
-        if (bot.pathfinder) bot.pathfinder.setGoal(null);
-      };
-
-      const followTick = async () => {
-        if (!followUser || !bot.entity) return;
-        const entry = bot.players?.[followUser];
-        const player = entry?.entity;
-        if (!player) return;
-
-        const d = bot.entity.position.distanceTo(player.position);
-        if (d > 5) {
-          // Re-issue a nearby goal instead of relying on the old GoalFollow
-          // implementation, which is currently reported to struggle on
-          // Minecraft versions newer than 1.21.8.
-          try {
-            bot.pathfinder.setGoal(new goals.GoalNear(
-              player.position.x,
-              player.position.y,
-              player.position.z,
-              2
-            ));
-          } catch (_) {}
-        } else if (bot.pathfinder?.isMoving()) {
-          bot.pathfinder.setGoal(null);
-        }
-
-        // Physics fallback: actively walk/jump toward the owner when close
-        // enough that pathfinding alone can get stuck on a one-block step.
-        if (d > 3 && d < 12) {
-          try {
-            await bot.lookAt(player.position.offset(0, 1.5, 0), true);
-            bot.setControlState("forward", true);
-            const dy = player.position.y - bot.entity.position.y;
-            if (dy > 0.4) {
-              bot.setControlState("jump", true);
-              setTimeout(() => bot.setControlState("jump", false), 180);
-            }
-          } catch (_) {}
-        } else {
-          bot.setControlState("forward", false);
-          bot.setControlState("jump", false);
-        }
-      };
-
-      bot.__yazoniFollow = (username) => {
-        stopFollow();
-        const entry = bot.players?.[username];
-        if (!entry?.entity) {
-          bot.chat("I can't see " + username + " right now.");
-          return false;
-        }
-        followUser = username;
-        bot.chat("Following " + username + ".");
-        followTick();
-        followTimer = setInterval(followTick, 500);
-        return true;
-      };
-
-      bot.__yazoniStopFollow = stopFollow;
-
-      // Basic physical life: don't leave the bot frozen when it has no task.
-      const ambient = setInterval(() => {
-        if (!bot.entity || followUser || agent.actions?.executing) return;
-        if (bot.pathfinder?.isMoving()) return;
-        if (Math.random() < 0.35) {
-          bot.setControlState("jump", true);
-          setTimeout(() => bot.setControlState("jump", false), 160);
-        }
-      }, 3500);
+      // Work around a known 1.21+ Mineflayer physics symptom where the bot
+      // can lose the ability to jump. This is harmless when the server denies it.
+      if (process.env.AUTO_PHYSICS_FIX !== "false") {
+        try {
+          bot.chat("/attribute @s minecraft:scale base set 0.9");
+        } catch (_) {}
+      }
 
       const cleanup = () => {
-        stopFollow();
-        clearInterval(ambient);
         bot.clearControlStates();
+        try { bot.pathfinder.setGoal(null); } catch (_) {}
       };
 
       bot.once("end", cleanup);
       bot.once("kicked", cleanup);
     };
 
-    bot.once("spawn", begin);
+    if (bot.entity) begin();
+    else bot.once("spawn", begin);
   };
 }
-`;
+\`;
 
 fs.writeFileSync(path.join(root,"src","yazoni_presence.js"),presenceModule);
 
