@@ -37,6 +37,126 @@ for(const patch of stalePatches){
 }
 run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
 
+const presenceModule = `import pf from "mineflayer-pathfinder";
+
+const { Movements, goals } = pf;
+
+export function installPresence(agent) {
+  const originalStart = agent.start.bind(agent);
+
+  agent.start = async (...args) => {
+    await originalStart(...args);
+
+    const bot = agent.bot;
+    if (!bot) return;
+
+    const begin = () => {
+      if (bot.__yazoniPresenceStarted) return;
+      bot.__yazoniPresenceStarted = true;
+
+      const movements = new Movements(bot);
+      movements.canDig = false;
+      movements.canPlace = false;
+      movements.allow1by1towers = false;
+      movements.allowParkour = false;
+      bot.pathfinder.setMovements(movements);
+
+      let busy = false;
+
+      const wander = async () => {
+        if (busy || !bot.entity || !bot.pathfinder) return;
+        if (agent.actions?.executing) return;
+
+        busy = true;
+        try {
+          const y = Math.floor(bot.entity.position.y);
+          const blocks = bot.findBlocks({
+            matching: block =>
+              block &&
+              block.boundingBox === "block" &&
+              Math.abs(block.position.y - y) <= 2,
+            maxDistance: 14,
+            count: 40
+          });
+
+          if (blocks.length > 0) {
+            const target = blocks[Math.floor(Math.random() * blocks.length)];
+            const goal = new goals.GoalNear(target.x, target.y + 1, target.z, 2);
+            await bot.pathfinder.goto(goal);
+          }
+
+          if (bot.entity) {
+            const p = bot.entity.position;
+            const angle = Math.random() * Math.PI * 2;
+            const look = p.offset(Math.cos(angle) * 5, 1 + Math.random() * 2, Math.sin(angle) * 5);
+            await bot.lookAt(look, true).catch(() => {});
+          }
+
+          if (Math.random() < 0.25 && bot.entity) {
+            bot.setControlState("jump", true);
+            setTimeout(() => bot.setControlState("jump", false), 180);
+          }
+        } catch (_) {
+          // Wandering is cosmetic; never let it kill the AI agent.
+        } finally {
+          busy = false;
+        }
+      };
+
+      wander();
+      const timer = setInterval(wander, 9000);
+
+      const cleanup = () => {
+        clearInterval(timer);
+        bot.clearControlStates();
+      };
+
+      bot.once("end", cleanup);
+      bot.once("kicked", cleanup);
+    };
+
+    bot.once("spawn", begin);
+  };
+}
+`;
+fs.writeFileSync(path.join(root,"src","yazoni_presence.js"),presenceModule);
+
+const initAgentPath=path.join(root,"src","process","init_agent.js");
+const initAgentSource=`import { Agent } from "../agent/agent.js";
+import { serverProxy } from "../agent/mindserver_proxy.js";
+import { installPresence } from "../yazoni_presence.js";
+
+const argv = process.argv.slice(2);
+const value = (short, long) => {
+  const i = argv.findIndex(x => x === short || x === long);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
+
+const name = value("-n", "--name") || argv[0];
+const port = Number(value("-p", "--port") || 8080);
+const loadMemory = argv.includes("-l") || argv.includes("--load_memory");
+const initMessage = value("-m", "--init_message") || null;
+const countId = Number(value("-c", "--count_id") || 0);
+
+(async () => {
+  try {
+    console.log("Connecting to MindServer");
+    await serverProxy.connect(name, port);
+    console.log("Starting agent");
+    const agent = new Agent();
+    serverProxy.setAgent(agent);
+    installPresence(agent);
+    await agent.start(loadMemory, initMessage, countId);
+  } catch (error) {
+    console.error("Failed to start agent process:");
+    console.error(error.message);
+    console.error(error.stack);
+    process.exit(1);
+  }
+})();
+`;
+fs.writeFileSync(initAgentPath,initAgentSource);
+
 fs.mkdirSync(path.join(root,"profiles"),{recursive:true});
 const profile={
   name:process.env.BOT_NAME||"YazoniBot",
