@@ -12,6 +12,24 @@ export class BehaviorLoop{
     await this.runBrain(text,id,true);
   }
 
+  async onPlayerMessage(username,message){
+    const text=String(message||"").trim();
+    if(!text || username===this.game.bot.username)return;
+    // Every player can talk to YazoniBot. Keep the identity in the prompt so
+    // Gemini can answer the correct person instead of treating every message as owner input.
+    this.commandId++;
+    const id=this.commandId;
+    await this.runBrain(`Player ${username} said: ${text}`,id,false);
+  }
+
+  async onConsoleMessage(message){
+    const text=String(message||"").trim();
+    if(!text)return;
+    this.commandId++;
+    const id=this.commandId;
+    await this.runBrain(`SERVER CONSOLE said: ${text}`,id,false);
+  }
+
   async tick(){
     if(this.busy||!this.game.bot?.entity)return;
     if(Date.now()-this.lastThinkAt<Math.max(1000,this.config.thinkMs-250))return;
