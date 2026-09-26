@@ -13,7 +13,31 @@ function makeBot(){
   bot=mineflayer.createBot({host:config.host,port:config.port,username:config.username,auth:config.auth,viewDistance:config.viewDistance});
   brain=new Brain(config,memory);game=new GameController(bot,memory,config);behavior=new BehaviorLoop(game,brain,config);
   bot.once("spawn",async()=>{game.ready();game.setHome();await game.equipArmor();behavior.start();console.log("[YazoniBot] Autonomous mode active.");bot.chat("I am here.");});
-  bot.on("chat",async(username,message)=>{if(username===bot.username)return;memory.remember(username,"chat",message,username===config.owner?4:1);if(username===config.owner)await behavior.onOwnerMessage(message);else if(message.toLowerCase().includes(config.botName.toLowerCase()))await behavior.onOwnerMessage("Player "+username+" said: "+message);});
+  bot.on("chat",async(username,message)=>{
+    if(username===bot.username)return;
+    memory.remember(username,"chat",message,username===config.owner?4:1);
+    if(username===config.owner) await behavior.onOwnerMessage(message);
+    else await behavior.onPlayerMessage(username,message);
+  });
+
+  // Server-console messages sent with /say are exposed to Mineflayer as system chat.
+  // Handle common server-console prefixes without confusing ordinary player chat.
+  bot.on("messagestr",async(message)=>{
+    const text=String(message||"").trim();
+    const consoleMatch=text.match(/^(?:\\[?Server\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
+    if(consoleMatch) await behavior.onConsoleMessage(consoleMatch[1]);
+  });
+
+  // Also accept stdin when the runtime provides a real process console.
+  // This works locally and in hosts that expose service stdin; Render can use /say
+  // on the Minecraft server for the same behavior.
+  if(process.stdin?.isTTY || process.env.ENABLE_STDIN_CONSOLE==="true"){
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data",chunk=>{
+      const line=String(chunk).trim();
+      if(line) behavior.onConsoleMessage(line).catch(e=>console.error("[Console]",e));
+    });
+  }
   bot.on("playerJoined",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","joined at "+JSON.stringify(p.entity?.position||{}),1);});
   bot.on("playerLeft",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","left the server",1);});
   bot.on("health",()=>{if(bot.food<12||bot.health<8)behavior?.onOwnerMessage("").catch(()=>{});});
