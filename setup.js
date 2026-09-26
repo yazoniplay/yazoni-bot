@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {execFileSync,spawn} from "node:child_process";
+import net from "node:net";
+import http from "node:http";
 
 const root=path.resolve(".mindcraft");
 const repoUrl="https://github.com/mindcraft-bots/mindcraft.git";
@@ -71,10 +73,53 @@ process.env.SETTINGS_JSON=JSON.stringify(settings);
 process.env.PROFILES=JSON.stringify(["./profiles/yazoni.json"]);
 
 if(process.argv.includes("--start")){
-  const child=spawn(process.execPath,["main.js"],{
-    cwd:root,
-    stdio:"inherit",
-    env:process.env
+  const healthPort=Number(process.env.PORT||process.env.HEALTH_PORT||3000);
+  http.createServer((req,res)=>{
+    res.writeHead(200,{"content-type":"application/json"});
+    res.end(JSON.stringify({
+      ok:true,
+      service:"yazoni-bot",
+      minecraft:{host:settings.host,port:settings.port},
+      status:"running"
+    }));
+  }).listen(healthPort,"0.0.0.0",()=>console.log("[YazoniBot] Health server listening on",healthPort));
+
+  const waitForMinecraft=()=>new Promise(resolve=>{
+    const socket=net.createConnection({host:settings.host,port:settings.port});
+    const finish=(status)=>{
+      socket.destroy();
+      resolve(status);
+    };
+    socket.setTimeout(5000);
+    socket.once("connect",()=>finish(true));
+    socket.once("timeout",()=>finish(false));
+    socket.once("error",()=>finish(false));
   });
-  child.on("exit",code=>process.exit(code??0));
+
+  const launch=async()=>{
+    while(true){
+      const reachable=await waitForMinecraft();
+      if(!reachable){
+        console.log("[YazoniBot] Minecraft server is not accepting connections at",settings.host+":"+settings.port,"— retrying in 15s");
+        await new Promise(r=>setTimeout(r,15000));
+        continue;
+      }
+
+      console.log("[YazoniBot] Minecraft endpoint is reachable. Starting Mindcraft agent...");
+      const child=spawn(process.execPath,["main.js"],{
+        cwd:root,
+        stdio:"inherit",
+        env:process.env
+      });
+
+      const code=await new Promise(resolve=>child.on("exit",resolve));
+      console.log("[YazoniBot] Mindcraft exited with code",code,"— restarting in 10s");
+      await new Promise(r=>setTimeout(r,10000));
+    }
+  };
+
+  launch().catch(err=>{
+    console.error("[YazoniBot] Supervisor error:",err);
+    process.exit(1);
+  });
 }
