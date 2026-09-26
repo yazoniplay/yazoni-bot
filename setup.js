@@ -55,18 +55,98 @@ if(fs.existsSync(skillsPath)){
   console.log("[YazoniBot] Patched safe player lookup in Mindcraft skills.");
 }
 
-// Patch Mindcraft chat routing and deterministic owner commands.
+// Patch Mindcraft chat routing, deterministic owner commands, and autonomous content behavior.
 const agentSourcePath=path.join(root,"src","agent","agent.js");
 if(fs.existsSync(agentSourcePath)){
   let agentSource=fs.readFileSync(agentSourcePath,"utf8");
-  const oldChat = "        if (settings.only_chat_with.length > 0) {\n            for (let username of settings.only_chat_with) {\n                this.bot.whisper(username, message);\n            }\n        }\n        else {\n            if (settings.speak) {\n                speak(to_translate, this.prompter.profile.speak_model);\n            }\n            if (settings.chat_ingame) {this.bot.chat(message);}\n            sendOutputToServer(this.name, message);\n        }";
-  const newChat = "        if (settings.speak) { speak(to_translate, this.prompter.profile.speak_model); }\n        if (settings.chat_ingame) { this.bot.chat(message); }\n        sendOutputToServer(this.name, message);";
-  agentSource=agentSource.replace(oldChat,newChat);
-  const needle="        // Now translate the message\n";
-  const injected="        // Deterministic owner command: \"mine up\" always mines blocks above the bot.\n        if (!self_prompt && !from_other_bot && settings.only_chat_with.includes(source) && /\\bmine\\s+up\\b/i.test(message)) {\n            try {\n                const base=this.bot.blockAt(this.bot.entity.position);\n                let mined=0;\n                for(let n=1;n<=4;n++){\n                    const block=this.bot.blockAt(base.position.offset(0,n,0));\n                    if(!block || [\"air\",\"cave_air\",\"void_air\"].includes(block.name)) break;\n                    await this.bot.dig(block,true);\n                    mined++;\n                }\n                this.routeResponse(source, mined>0 ? \"Mining up — cleared \"+mined+\" block\"+(mined===1?\"\":\"s\")+\" above me.\" : \"There is nothing to mine above me.\");\n                return true;\n            } catch(error) {\n                console.error(\"[YazoniBot] mine up failed:\",error);\n                this.routeResponse(source,\"I tried to mine up, but the block could not be broken.\");\n                return false;\n            }\n        }\n\n";
-  if(!agentSource.includes("Deterministic owner command: \"mine up\"")) agentSource=agentSource.replace(needle,injected+needle);
-  // Start a lightweight autonomous content loop. Mindcraft's self-prompter is otherwise STOPPED by default,\n  // so the bot only acts when spoken to. We deliberately run one LLM decision at a time to avoid\n  // burning Gemini quota while still giving the character independent behavior for videos.\n  const autoNeedle='                this.startEvents();\\n';\n  const autoInject=\`                this.startEvents();\n                this.__yazoniAutonomyStarted = true;\n                let __yazoniAutoBusy = false;\n                const __yazoniAutonomousThink = async () => {\n                    if (__yazoniAutoBusy || !this.bot || !this.bot.entity || this.actions?.executing) return;\n                    __yazoniAutoBusy = true;\n                    try {\n                        await this.handleMessage('system',\n                            'You are the autonomous content brain for a Minecraft YouTube companion. Act independently; do not wait for the owner.\\n' +\n                            'Look at the current world/inventory/context and choose ONE useful, funny, or interesting thing to do now.\\n' +\n                            'Examples: explore somewhere new, gather resources, chop a tree, improve the area, farm, craft something useful, investigate a structure, react to nearby mobs/events, or create a small funny moment.\\n' +\n                            'Do not repeatedly follow the owner unless that is genuinely the best action. Do not stand still. Prefer real Minecraft actions over talking.\\n' +\n                            'Choose an action that can actually be executed with the available commands, then do it.', 1);\n                    } catch (error) {\n                        console.error('[YazoniBot] autonomous decision failed:', error);\n                    } finally {\n                        __yazoniAutoBusy = false;\n                    }\n                };\n                setTimeout(__yazoniAutonomousThink, 15000);\n                setInterval(__yazoniAutonomousThink, Number(process.env.AUTONOMY_INTERVAL_MS || 45000));\n\`;\n                agentSource=agentSource.replace(autoNeedle,autoInject);\n  fs.writeFileSync(agentSourcePath,agentSource);
-  console.log("[YazoniBot] Patched public chat routing and deterministic mine-up command.");
+
+  const openStart=agentSource.indexOf("    async openChat(message) {");
+  const openEnd=agentSource.indexOf("    startEvents() {",openStart);
+  if(openStart !== -1 && openEnd !== -1){
+    const publicOpenChat=`    async openChat(message) {
+        let to_translate = message;
+        let remaining = '';
+        let command_name = containsCommand(message);
+        let translate_up_to = command_name ? message.indexOf(command_name) : -1;
+        if (translate_up_to != -1) {
+            to_translate = to_translate.substring(0, translate_up_to);
+            remaining = message.substring(translate_up_to);
+        }
+        message = (await handleTranslation(to_translate)).trim() + " " + remaining;
+        message = message.replaceAll('\\n', ' ');
+        if (settings.speak) speak(to_translate, this.prompter.profile.speak_model);
+        if (settings.chat_ingame) this.bot.chat(message);
+        sendOutputToServer(this.name, message);
+    }
+
+`;
+    agentSource=agentSource.slice(0,openStart)+publicOpenChat+agentSource.slice(openEnd);
+  }
+
+  const translateNeedle="        // Now translate the message\\n";
+  const deterministicMine=`        if (!self_prompt && !from_other_bot && settings.only_chat_with.some(u => String(u).toLowerCase() === String(source).toLowerCase()) && /\\\\bmine\\\\s+up\\\\b/i.test(String(message))) {
+            try {
+                let mined=0;
+                for(let n=1;n<=8;n++){
+                    const block=this.bot.blockAt(this.bot.entity.position.offset(0,n,0));
+                    if(!block || ["air","cave_air","void_air"].includes(block.name)) break;
+                    await this.bot.dig(block,true);
+                    mined++;
+                }
+                await this.routeResponse(source, mined>0
+                    ? "Mining up — cleared "+mined+" block"+(mined===1?"":"s")+" above me."
+                    : "There is nothing solid above me.");
+                return true;
+            } catch(error) {
+                console.error("[YazoniBot] deterministic mine-up failed:",error);
+                await this.routeResponse(source,"I tried to mine up, but the block could not be broken.");
+                return false;
+            }
+        }
+
+`;
+  if(!agentSource.includes("deterministic mine-up failed")){
+    agentSource=agentSource.replace(translateNeedle,deterministicMine+translateNeedle);
+  }
+
+  const autoNeedle="                this.startEvents();\\n";
+  const autoInject=`                this.startEvents();
+                this.__yazoniAutonomyStarted=true;
+                let __yazoniAutoBusy=false;
+                let __yazoniAutoCalls=0;
+                let __yazoniAutoDay=new Date().toISOString().slice(0,10);
+                const __yazoniAutonomousThink=async()=>{
+                    if(__yazoniAutoBusy || !this.bot || !this.bot.entity || !this.isIdle()) return;
+                    __yazoniAutoBusy=true;
+                    try{
+                        await this.handleMessage('system',
+                            'You are YazoniBot, an autonomous Minecraft YouTube character.\\n'+
+                            'You must ACT in the world, not just talk. Pick ONE concrete action and execute it.\\n'+
+                            'Do not use followPlayer or goToPlayer unless the owner explicitly asked you to follow or move to them.\\n'+
+                            'Do not repeatedly choose the same action. Prefer varied content: mine useful resources, chop trees, gather food, craft useful items, explore, investigate structures, improve a base/area, farm, fight nearby hostile mobs when safe, react to events, or create a funny situation.\\n'+
+                            'Never invent that you performed an action: actually call a Minecraft action command.\\n'+
+                            'If an action fails, immediately choose a different executable action instead of explaining the failure.',1);
+                    }catch(error){
+                        console.error("[YazoniBot] autonomous decision failed:",error);
+                    }finally{
+                        __yazoniAutoBusy=false;
+                    }
+                };
+                const __yazoniRunAutonomous=async()=>{
+                    const today=new Date().toISOString().slice(0,10);
+                    if(today!==__yazoniAutoDay){__yazoniAutoDay=today;__yazoniAutoCalls=0;}
+                    if(__yazoniAutoCalls>=Number(process.env.MAX_AUTONOMY_CALLS_PER_DAY||300)) return;
+                    if(!this.bot || !this.bot.entity || !this.isIdle()) return;
+                    __yazoniAutoCalls++;
+                    await __yazoniAutonomousThink();
+                };
+                setTimeout(__yazoniRunAutonomous,15000);
+                setInterval(__yazoniRunAutonomous,Number(process.env.AUTONOMY_INTERVAL_MS||180000));
+`;
+  agentSource=agentSource.replace(autoNeedle,autoInject);
+
+  fs.writeFileSync(agentSourcePath,agentSource);
+  console.log("[YazoniBot] Installed public chat, deterministic owner commands, and autonomous content brain.");
 }
 const presenceModule = `import pf from "mineflayer-pathfinder";
 
