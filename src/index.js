@@ -24,8 +24,20 @@ function makeBot(){
   // Handle common server-console prefixes without confusing ordinary player chat.
   bot.on("messagestr",async(message)=>{
     const text=String(message||"").trim();
-    const consoleMatch=text.match(/^(?:\\[?Server\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
-    if(consoleMatch) await behavior.onConsoleMessage(consoleMatch[1]);
+    const consoleMatch=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
+    if(consoleMatch){
+      console.log("[YazoniBot] Server console message:",consoleMatch[1]);
+      await behavior.onConsoleMessage(consoleMatch[1]);
+    }
+  });
+
+  bot.on("systemChat",async(packet)=>{
+    const text=typeof packet==="string"?packet:String(packet?.formattedText||packet?.text||"").trim();
+    const match=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
+    if(match){
+      console.log("[YazoniBot] System console message:",match[1]);
+      await behavior.onConsoleMessage(match[1]);
+    }
   });
 
   // Also accept stdin when the runtime provides a real process console.
