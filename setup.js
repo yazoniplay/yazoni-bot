@@ -37,6 +37,24 @@ for(const patch of stalePatches){
 }
 run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
 
+// Patch Mindcraft player navigation so missing/offline players never crash an action.
+// Mindcraft v0.1.4 assumes bot.players[username] always exists; Mineflayer does not.
+// A player entry can be absent while the player is offline/not loaded.
+const skillsPath=path.join(root,"src","agent","library","skills.js");
+if(fs.existsSync(skillsPath)){
+  let skills=fs.readFileSync(skillsPath,"utf8");
+  skills=skills.replace(
+    '    let player = bot.players[username].entity\n',
+    '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n'
+  );
+  skills=skills.replace(
+    '    let player = bot.players[username].entity\n    if (!player)\n        return false;\n',
+    '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n    if (!player) {\n        log(bot, \`Could not find \${username}. The player may be offline or not currently loaded.\`);\n        return false;\n    }\n'
+  );
+  fs.writeFileSync(skillsPath,skills);
+  console.log("[YazoniBot] Patched safe player lookup in Mindcraft skills.");
+}
+
 const presenceModule = `import pf from "mineflayer-pathfinder";
 
 const { Movements, goals } = pf;
