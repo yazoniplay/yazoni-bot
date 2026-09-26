@@ -55,6 +55,19 @@ if(fs.existsSync(skillsPath)){
   console.log("[YazoniBot] Patched safe player lookup in Mindcraft skills.");
 }
 
+// Patch Mindcraft chat routing and deterministic owner commands.
+const agentSourcePath=path.join(root,"src","agent","agent.js");
+if(fs.existsSync(agentSourcePath)){
+  let agentSource=fs.readFileSync(agentSourcePath,"utf8");
+  const oldChat = "        if (settings.only_chat_with.length > 0) {\n            for (let username of settings.only_chat_with) {\n                this.bot.whisper(username, message);\n            }\n        }\n        else {\n            if (settings.speak) {\n                speak(to_translate, this.prompter.profile.speak_model);\n            }\n            if (settings.chat_ingame) {this.bot.chat(message);}\n            sendOutputToServer(this.name, message);\n        }";
+  const newChat = "        if (settings.speak) { speak(to_translate, this.prompter.profile.speak_model); }\n        if (settings.chat_ingame) { this.bot.chat(message); }\n        sendOutputToServer(this.name, message);";
+  agentSource=agentSource.replace(oldChat,newChat);
+  const needle="        // Now translate the message\n";
+  const injected="        // Deterministic owner command: \"mine up\" always mines blocks above the bot.\n        if (!self_prompt && !from_other_bot && settings.only_chat_with.includes(source) && /\\bmine\\s+up\\b/i.test(message)) {\n            try {\n                const base=this.bot.blockAt(this.bot.entity.position);\n                let mined=0;\n                for(let n=1;n<=4;n++){\n                    const block=this.bot.blockAt(base.position.offset(0,n,0));\n                    if(!block || [\"air\",\"cave_air\",\"void_air\"].includes(block.name)) break;\n                    await this.bot.dig(block,true);\n                    mined++;\n                }\n                this.routeResponse(source, mined>0 ? \"Mining up — cleared \"+mined+\" block\"+(mined===1?\"\":\"s\")+\" above me.\" : \"There is nothing to mine above me.\");\n                return true;\n            } catch(error) {\n                console.error(\"[YazoniBot] mine up failed:\",error);\n                this.routeResponse(source,\"I tried to mine up, but the block could not be broken.\");\n                return false;\n            }\n        }\n\n";
+  if(!agentSource.includes("Deterministic owner command: \"mine up\"")) agentSource=agentSource.replace(needle,injected+needle);
+  fs.writeFileSync(agentSourcePath,agentSource);
+  console.log("[YazoniBot] Patched public chat routing and deterministic mine-up command.");
+}
 const presenceModule = `import pf from "mineflayer-pathfinder";
 
 const { Movements, goals } = pf;
@@ -197,7 +210,7 @@ const settings={
   base_profile:"assistant",
   profiles:["./profiles/yazoni.json"],
   load_memory:true,
-  init_message:"You are YazoniBot. Join Yazoni, stay close, and behave like a funny Minecraft companion made for YouTube videos.",
+  init_message:`You are YazoniBot, a funny Minecraft companion made for YouTube videos. The owner exact Minecraft username is "${process.env.OWNER_USERNAME||"Yazoni_plays"}". Follow explicit owner instructions immediately. When the owner says "mine up", mine blocks above you; never interpret it as digging down. Use Minecraft actions instead of merely explaining what you would do.`,
   only_chat_with:process.env.OWNER_USERNAME?[process.env.OWNER_USERNAME]:[],
   speak:process.env.SPEAK==="true",
   chat_ingame:true,
@@ -210,7 +223,7 @@ const settings={
   max_messages:Number(process.env.MAX_MESSAGES||15),
   num_examples:2,
   max_commands:-1,
-  show_command_syntax:"none",
+  show_command_syntax:"shortened",
   narrate_behavior:true,
   chat_bot_messages:true,
   spawn_timeout:30,
