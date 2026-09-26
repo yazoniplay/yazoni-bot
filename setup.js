@@ -43,74 +43,71 @@ run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
 const skillsPath=path.join(root,"src","agent","library","skills.js");
 if(fs.existsSync(skillsPath)){
   let skills=fs.readFileSync(skillsPath,"utf8");
+
+  // Make player lookup safe.
   skills=skills.replace(
     '    let player = bot.players[username].entity\n',
     '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n'
   );
 
-  // Replace Mindcraft's fragile GoalFollow implementation with a resilient controller.
-  // Recent mineflayer-pathfinder versions have an open GoalFollow regression on servers newer
-  // than 1.21.8, so the controller uses GoalNear + direct movement/jump fallback.
-  const followStart = skills.indexOf("export async function followPlayer(bot, username, distance=4) {");
-  const followEnd = skills.indexOf("\n\nexport async function moveAway(", followStart);
-  if(followStart !== -1 && followEnd !== -1){
-    const robustFollow = `export async function followPlayer(bot, username, distance=4) {
-    const playerEntry = bot.players?.[username];
-    const player = playerEntry?.entity;
-    if (!player) {
+  // Replace Mindcraft's fragile follow implementation with a resilient controller.
+  const followStart=skills.indexOf("export async function followPlayer(bot, username, distance=4) {");
+  const followEnd=skills.indexOf("\n\nexport async function moveAway(",followStart);
+  if(followStart!==-1 && followEnd!==-1){
+    const robustFollow=`export async function followPlayer(bot, username, distance=4) {
+    const playerEntry=bot.players?.[username];
+    const player=playerEntry?.entity;
+    if(!player){
         log(bot, \`I cannot see \${username} right now.\`);
         return false;
     }
 
-    const movements = new pf.Movements(bot);
-    movements.canDig = true;
-    movements.canPlace = true;
-    movements.allowParkour = true;
-    movements.allowSprinting = true;
-    movements.digCost = 1;
-    bot.pathfinder.setMovements(movements);
+    const move=new pf.Movements(bot);
+    move.canDig=true;
+    move.canPlace=true;
+    move.allowParkour=true;
+    move.allowSprinting=true;
+    move.digCost=1;
+    bot.pathfinder.setMovements(move);
     bot.modes.pause('unstuck');
     bot.modes.pause('elbow_room');
 
     log(bot, \`Actively following \${username}.\`);
 
-    try {
-        while (!bot.interrupt_code && bot.entity && player.isValid !== false) {
-            const d = bot.entity.position.distanceTo(player.position);
+    try{
+        while(!bot.interrupt_code && bot.entity && player.isValid!==false){
+            const d=bot.entity.position.distanceTo(player.position);
 
-            if (d > 4) {
-                try {
+            if(d>4){
+                try{
                     bot.pathfinder.setGoal(new pf.goals.GoalNear(
-                        player.position.x,
-                        player.position.y,
-                        player.position.z,
-                        Math.max(1.5, distance)
+                        player.position.x,player.position.y,player.position.z,
+                        Math.max(1.5,distance)
                     ));
-                } catch (_) {}
+                }catch(_){}
 
-                if (d < 14) {
-                    try {
-                        await bot.lookAt(player.position.offset(0, 1.5, 0), true);
-                        bot.setControlState('forward', true);
-                        bot.setControlState('sprint', d > 7);
-                        const dy = player.position.y - bot.entity.position.y;
-                        if (dy > 0.45 || d > 9) {
-                            bot.setControlState('jump', true);
+                if(d<14){
+                    try{
+                        await bot.lookAt(player.position.offset(0,1.5,0),true);
+                        bot.setControlState('forward',true);
+                        bot.setControlState('sprint',d>7);
+                        if(player.position.y-bot.entity.position.y>0.45 || d>9){
+                            bot.setControlState('jump',true);
                         }
-                    } catch (_) {}
+                    }catch(_){}
                 }
-            } else {
-                bot.setControlState('forward', false);
-                bot.setControlState('sprint', false);
-                bot.setControlState('jump', false);
-                if (bot.pathfinder?.isMoving()) bot.pathfinder.setGoal(null);
+            }else{
+                bot.setControlState('forward',false);
+                bot.setControlState('sprint',false);
+                bot.setControlState('jump',false);
+                if(bot.pathfinder?.isMoving()) bot.pathfinder.setGoal(null);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 250));
+            await new Promise(resolve=>setTimeout(resolve,250));
         }
-    } finally {
+    }finally{
         bot.clearControlStates();
-        try { bot.pathfinder.setGoal(null); } catch (_) {}
+        try{bot.pathfinder.setGoal(null);}catch(_){}
         bot.modes.unpause('unstuck');
         bot.modes.unpause('elbow_room');
     }
@@ -118,16 +115,10 @@ if(fs.existsSync(skillsPath)){
 }
 `;
     skills=skills.slice(0,followStart)+robustFollow+skills.slice(followEnd);
-  }  skills=skills.replace(
-    '    let player = bot.players[username].entity\n',
-    '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n'
+  }
 
-  skills=skills.replace(
-    '    let player = bot.players[username].entity\n    if (!player)\n        return false;\n',
-    '    const playerEntry = bot.players?.[username];\n    let player = playerEntry?.entity;\n    if (!player) {\n        log(bot, \`Could not find \${username}. The player may be offline or not currently loaded.\`);\n        return false;\n    }\n'
-  );
   fs.writeFileSync(skillsPath,skills);
-  console.log("[YazoniBot] Patched safe player lookup in Mindcraft skills.");
+  console.log("[YazoniBot] Installed safe navigation and resilient follow skill.");
 }
 
 // Patch Mindcraft chat routing, deterministic owner commands, and autonomous content behavior.
