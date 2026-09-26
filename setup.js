@@ -326,7 +326,7 @@ const settings={
   chat_ingame:true,
   language:"en",
   render_bot_view:false,
-  allow_insecure_coding:false,
+  allow_insecure_coding:true,
   allow_vision:false,
   blocked_actions:[],
   relevant_docs_count:5,
