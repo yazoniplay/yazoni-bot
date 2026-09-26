@@ -210,7 +210,7 @@ const settings={
   max_messages:Number(process.env.MAX_MESSAGES||15),
   num_examples:2,
   max_commands:-1,
-  show_command_syntax:"shortened",
+  show_command_syntax:"none",
   narrate_behavior:true,
   chat_bot_messages:true,
   spawn_timeout:30,
