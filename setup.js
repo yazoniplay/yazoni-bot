@@ -223,7 +223,7 @@ if(fs.existsSync(agentSourcePath)){
   fs.writeFileSync(agentSourcePath,agentSource);
   console.log("[YazoniBot] Installed public chat, deterministic owner commands, and autonomous content brain.");
 }
-const presenceModule = \`import pf from "mineflayer-pathfinder";
+const presenceModule = `import pf from "mineflayer-pathfinder";
 
 export function installPresence(agent) {
   const originalStart = agent.start.bind(agent);
@@ -267,7 +267,7 @@ export function installPresence(agent) {
     else bot.once("spawn", begin);
   };
 }
-\`;
+`;
 
 fs.writeFileSync(path.join(root,"src","yazoni_presence.js"),presenceModule);
 
