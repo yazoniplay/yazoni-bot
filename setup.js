@@ -7,7 +7,7 @@ import http from "node:http";
 const root=path.resolve(".mindcraft");
 const repoUrl="https://github.com/mindcraft-bots/mindcraft.git";
 const ref="v0.1.4";
-const mineflayerVersion=process.env.MINEFLAYER_VERSION||"4.35.0";
+const mineflayerVersion=process.env.MINEFLAYER_VERSION||"4.39.0";
 
 function run(cmd,args,cwd=process.cwd()){
   console.log("[YazoniBot]",cmd,args.join(" "));
@@ -24,6 +24,17 @@ const pkg=JSON.parse(fs.readFileSync(pkgPath,"utf8"));
 pkg.dependencies={...(pkg.dependencies||{}),mineflayer:mineflayerVersion};
 fs.writeFileSync(pkgPath,JSON.stringify(pkg,null,2)+"\n");
 
+const stalePatches=[
+  "mineflayer+4.33.0.patch",
+  "minecraft-data+3.97.0.patch"
+];
+for(const patch of stalePatches){
+  const patchPath=path.join(root,"patches",patch);
+  if(fs.existsSync(patchPath)){
+    fs.rmSync(patchPath,{force:true});
+    console.log("[YazoniBot] Removed incompatible Mindcraft patch:",patch);
+  }
+}
 run("npm",["install","--no-audit","--no-fund","--include=dev"],root);
 
 fs.mkdirSync(path.join(root,"profiles"),{recursive:true});
