@@ -157,7 +157,6 @@ export function installPresence(agent) {
 
   agent.start = async (...args) => {
     await originalStart(...args);
-
     const bot = agent.bot;
     if (!bot) return;
 
@@ -165,60 +164,97 @@ export function installPresence(agent) {
       if (bot.__yazoniPresenceStarted) return;
       bot.__yazoniPresenceStarted = true;
 
+      // Keep pathfinding capable of normal Minecraft movement.
+      // The previous version explicitly disabled jumping, digging and parkour.
       const movements = new Movements(bot);
-      movements.canDig = false;
-      movements.canPlace = false;
+      movements.canDig = true;
+      movements.canPlace = true;
       movements.allow1by1towers = false;
-      movements.allowParkour = false;
+      movements.allowParkour = true;
+      movements.allowSprinting = true;
       bot.pathfinder.setMovements(movements);
 
-      let busy = false;
+      let followTimer = null;
+      let followUser = null;
 
-      const wander = async () => {
-        if (busy || !bot.entity || !bot.pathfinder) return;
-        if (agent.actions?.executing) return;
+      const stopFollow = () => {
+        if (followTimer) clearInterval(followTimer);
+        followTimer = null;
+        followUser = null;
+        bot.clearControlStates();
+        if (bot.pathfinder) bot.pathfinder.setGoal(null);
+      };
 
-        busy = true;
-        try {
-          const y = Math.floor(bot.entity.position.y);
-          const blocks = bot.findBlocks({
-            matching: block =>
-              block &&
-              block.boundingBox === "block" &&
-              Math.abs(block.position.y - y) <= 2,
-            maxDistance: 14,
-            count: 40
-          });
+      const followTick = async () => {
+        if (!followUser || !bot.entity) return;
+        const entry = bot.players?.[followUser];
+        const player = entry?.entity;
+        if (!player) return;
 
-          if (blocks.length > 0) {
-            const target = blocks[Math.floor(Math.random() * blocks.length)];
-            const goal = new goals.GoalNear(target.x, target.y + 1, target.z, 2);
-            await bot.pathfinder.goto(goal);
-          }
+        const d = bot.entity.position.distanceTo(player.position);
+        if (d > 5) {
+          // Re-issue a nearby goal instead of relying on the old GoalFollow
+          // implementation, which is currently reported to struggle on
+          // Minecraft versions newer than 1.21.8.
+          try {
+            bot.pathfinder.setGoal(new goals.GoalNear(
+              player.position.x,
+              player.position.y,
+              player.position.z,
+              2
+            ));
+          } catch (_) {}
+        } else if (bot.pathfinder?.isMoving()) {
+          bot.pathfinder.setGoal(null);
+        }
 
-          if (bot.entity) {
-            const p = bot.entity.position;
-            const angle = Math.random() * Math.PI * 2;
-            const look = p.offset(Math.cos(angle) * 5, 1 + Math.random() * 2, Math.sin(angle) * 5);
-            await bot.lookAt(look, true).catch(() => {});
-          }
-
-          if (Math.random() < 0.25 && bot.entity) {
-            bot.setControlState("jump", true);
-            setTimeout(() => bot.setControlState("jump", false), 180);
-          }
-        } catch (_) {
-          // Wandering is cosmetic; never let it kill the AI agent.
-        } finally {
-          busy = false;
+        // Physics fallback: actively walk/jump toward the owner when close
+        // enough that pathfinding alone can get stuck on a one-block step.
+        if (d > 3 && d < 12) {
+          try {
+            await bot.lookAt(player.position.offset(0, 1.5, 0), true);
+            bot.setControlState("forward", true);
+            const dy = player.position.y - bot.entity.position.y;
+            if (dy > 0.4) {
+              bot.setControlState("jump", true);
+              setTimeout(() => bot.setControlState("jump", false), 180);
+            }
+          } catch (_) {}
+        } else {
+          bot.setControlState("forward", false);
+          bot.setControlState("jump", false);
         }
       };
 
-      wander();
-      const timer = setInterval(wander, 9000);
+      bot.__yazoniFollow = (username) => {
+        stopFollow();
+        const entry = bot.players?.[username];
+        if (!entry?.entity) {
+          bot.chat("I can't see " + username + " right now.");
+          return false;
+        }
+        followUser = username;
+        bot.chat("Following " + username + ".");
+        followTick();
+        followTimer = setInterval(followTick, 500);
+        return true;
+      };
+
+      bot.__yazoniStopFollow = stopFollow;
+
+      // Basic physical life: don't leave the bot frozen when it has no task.
+      const ambient = setInterval(() => {
+        if (!bot.entity || followUser || agent.actions?.executing) return;
+        if (bot.pathfinder?.isMoving()) return;
+        if (Math.random() < 0.35) {
+          bot.setControlState("jump", true);
+          setTimeout(() => bot.setControlState("jump", false), 160);
+        }
+      }, 3500);
 
       const cleanup = () => {
-        clearInterval(timer);
+        stopFollow();
+        clearInterval(ambient);
         bot.clearControlStates();
       };
 
@@ -230,6 +266,7 @@ export function installPresence(agent) {
   };
 }
 `;
+
 fs.writeFileSync(path.join(root,"src","yazoni_presence.js"),presenceModule);
 
 const initAgentPath=path.join(root,"src","process","init_agent.js");
