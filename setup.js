@@ -84,7 +84,7 @@ if(fs.existsSync(agentSourcePath)){
   }
 
   const translateNeedle="        // Now translate the message\\n";
-  const deterministicMine=`        if (!self_prompt && !from_other_bot && settings.only_chat_with.some(u => String(u).toLowerCase() === String(source).toLowerCase()) && /\\\\bmine\\\\s+up\\\\b/i.test(String(message))) {
+  const deterministicMine=`        if (!self_prompt && !from_other_bot && settings.only_chat_with.some(u => String(u).toLowerCase() === String(source).toLowerCase()) && /\\bmine\\s+up\\b/i.test(String(message))) {
             try {
                 let mined=0;
                 for(let n=1;n<=8;n++){
