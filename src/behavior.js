@@ -1,47 +1,40 @@
 export class BehaviorLoop{
-  constructor(game,brain,config){this.game=game;this.brain=brain;this.config=config;this.timer=null;this.busy=false;this.lastThinkAt=0;this.lastProactiveChat=0;this.commandId=0;}
-  start(){if(this.timer)return;this.timer=setInterval(()=>this.tick().catch(e=>console.error("[Behavior]",e)),this.config.thinkMs);this.tick().catch(e=>console.error("[Behavior]",e));}
-  stop(){if(this.timer)clearInterval(this.timer);this.timer=null;}
+  constructor(game,brain,config){this.game=game;this.brain=brain;this.config=config;this.busy=false;this.commandId=0;}
+  start(){console.log("[Behavior] Owner-command mode ready. No background Gemini loop.");}
+  stop(){this.busy=false;}
 
   async onOwnerMessage(message){
-    const text=String(message||"").trim();
-    this.commandId++;
-    const id=this.commandId;
-    if(/^(?:stop|stay|wait|stop following|cancel)$/i.test(text)){this.game.stop();this.game.say("Stopping.");return;}
-    this.game.cancelMovement();
-    await this.runBrain(text,id,true);
-  }
-
-  async onPlayerMessage(username,message){
-    const text=String(message||"").trim();
-    if(!text || username===this.game.bot.username)return;
-    // Every player can talk to YazoniBot. Keep the identity in the prompt so
-    // Gemini can answer the correct person instead of treating every message as owner input.
-    this.commandId++;
-    const id=this.commandId;
-    await this.runBrain(`Player ${username} said: ${text}`,id,false);
-  }
-
-  async onConsoleMessage(message){
     const text=String(message||"").trim();
     if(!text)return;
     this.commandId++;
     const id=this.commandId;
-    await this.runBrain(`SERVER CONSOLE said: ${text}`,id,false);
+    const lower=text.toLowerCase();
+
+    // Handle the common commands locally so Gemini can never block basic control.
+    if(/^(?:stop|stay|wait|stop following|cancel)$/i.test(text)){this.game.stop();this.game.say("Stopping.");return;}
+    if(/^(?:hi|hello|hey|yo|yazoni(bot)?)(?:[!. ]*)$/i.test(text)){this.game.say("Yo Yazoni 😎");return;}
+    if(/^(?:follow me|follow)$/i.test(text)){this.game.action({action:"follow_owner"});this.game.say("Following you.");return;}
+    if(/^(?:come here|come to me|come)$/i.test(text)){const ok=this.game.action({action:"come_owner"});this.game.say(ok?"Coming.":"I can't see you.");return;}
+    if(/^(?:go home|home)$/i.test(text)){const ok=this.game.action({action:"goto",x:this.game.home?.x,y:this.game.home?.y,z:this.game.home?.z});this.game.say(ok?"Going home.":"No home set.");return;}
+    if(/^(?:eat|eat food)$/i.test(text)){const ok=await this.game.action({action:"eat"});this.game.say(ok?"Eating.":"I have no food.");return;}
+    const up=text.match(/^(?:mine|dig)\s+(up|down)(?:\s+(\d+))?$/i);
+    if(up){const ok=await this.game.action({action:"mine_direction",item:up[1].toLowerCase(),count:Number(up[2])||8});this.game.say(ok?"Mining "+up[1]+".":"I can't mine that direction.");return;}
+    const mine=text.match(/^(?:mine|collect|get)\s+(.+?)(?:\s+(\d+))?$/i);
+    if(mine){const ok=await this.game.action({action:"mine",item:mine[1],count:Number(mine[2])||1});this.game.say(ok?"On it.":"I couldn't find that nearby.");return;}
+    const attack=text.match(/^(?:attack|kill|fight)(?:\s+(.+))?$/i);
+    if(attack){const ok=await this.game.action({action:"hit",item:attack[1]||""});this.game.say(ok?"Fighting.":"No target nearby.");return;}
+
+    this.game.cancelMovement();
+    await this.runBrain(text,id,true);
   }
 
-  async tick(){
-    if(this.busy||!this.game.bot?.entity)return;
-    if(Date.now()-this.lastThinkAt<Math.max(1000,this.config.thinkMs-250))return;
-    await this.runBrain("",this.commandId,false);
-  }
+  async onPlayerMessage(){/* owner-only mode: ignored */}
+  async onConsoleMessage(){/* owner-only mode: ignored */}
 
   async runBrain(input,id,ownerMessage){
     if(this.busy)return;
     this.busy=true;
-    this.lastThinkAt=Date.now();
     try{
-      if(this.game.bot.food<10)await this.game.action({action:"eat"});
       const result=await this.brain.runAgent(input,this.game.state(),async(name,args)=>{
         if(ownerMessage&&id!==this.commandId)return{ok:false,error:"Cancelled by a newer owner message."};
         const mapped=this.mapTool(name,args);
@@ -51,15 +44,13 @@ export class BehaviorLoop{
           const state=this.game.state();
           this.game.memory.remember(this.config.owner,"ai_action",name+" "+JSON.stringify(args)+" => "+(ok?"ok":"failed"),ok?1:3);
           return{ok,state,lastAction:this.game.lastAction};
-        }catch(e){
-          return{ok:false,error:e.message,state:this.game.state()};
-        }
+        }catch(e){return{ok:false,error:e.message,state:this.game.state()};}
       });
       if(ownerMessage&&id!==this.commandId)return;
-      if(result.reply&&(!input?Date.now()-this.lastProactiveChat>=this.config.proactiveChatMs:true)){
-        this.game.say(result.reply);
-        if(!input)this.lastProactiveChat=Date.now();
-      }
+      if(result.reply)this.game.say(result.reply);
+    }catch(e){
+      console.error("[Behavior] Owner command failed:",e);
+      this.game.say("My brain errored. Check Render logs.");
     }finally{this.busy=false;}
   }
 
