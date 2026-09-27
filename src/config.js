@@ -3,7 +3,7 @@ const num=(v,d)=>Number.isFinite(Number(v))?Number(v):d;
 export const config={
   host:process.env.MC_HOST||"localhost",port:num(process.env.MC_PORT,25565),
   username:process.env.MC_USERNAME||"YazoniBot",auth:process.env.MC_AUTH||"offline",
-  owner:process.env.OWNER_USERNAME||"Yazoni",botName:process.env.BOT_NAME||"YazoniBot",
+  owner:process.env.OWNER_USERNAME||"Yazoni_plays",botName:process.env.BOT_NAME||"YazoniBot",
   model:process.env.GEMINI_MODEL||"gemini-3.5-flash-lite",
   fallbackModel:process.env.GEMINI_FALLBACK_MODEL||"gemini-3.1-flash-lite",
   apiKey:process.env.GEMINI_API_KEY||"",
