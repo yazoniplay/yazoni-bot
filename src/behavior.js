@@ -59,7 +59,7 @@ export class BehaviorLoop{
       case"follow_owner":return{action:"follow_owner"};
       case"come_to_owner":return{action:"come_owner"};
       case"stop":return{action:"stop"};
-      case"move_to":return{action:"goto",x:args.x,y:args.y,z:args.z};
+      case"move_to":return{action:"goto",x:args.x,y:args.y,z:args.z};case"move":return{action:"move",direction:args.direction,durationMs:args.duration_ms||400};case"look_at":return{action:"look_at",x:args.x,y:args.y,z:args.z};case"jump":return{action:"jump"};
       case"explore":return{action:"explore"};
       case"mine":return{action:"mine",item:args.block,count:args.count||1};
       case"mine_direction":return{action:"mine_direction",item:args.direction,count:args.count||8};
