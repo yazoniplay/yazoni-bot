@@ -12,55 +12,23 @@ function makeBot(){
   console.log("[YazoniBot] Connecting to "+config.host+":"+config.port+" as "+config.username);
   bot=mineflayer.createBot({host:config.host,port:config.port,username:config.username,auth:config.auth,viewDistance:config.viewDistance});
   brain=new Brain(config,memory);game=new GameController(bot,memory,config);behavior=new BehaviorLoop(game,brain,config);
-  bot.once("spawn",async()=>{game.ready();game.setHome();await game.equipArmor();behavior.start();console.log("[YazoniBot] Autonomous mode active.");bot.chat("I am here.");});
+  bot.once("spawn",async()=>{game.ready();game.setHome();await game.equipArmor();behavior.start();console.log("[YazoniBot] Spawned. Listening ONLY to "+config.owner);bot.chat("I am here.");});
   bot.on("chat",async(username,message)=>{
     if(username===bot.username)return;
     const isOwner=username.toLowerCase()===String(config.owner).toLowerCase();
     console.log(`[YazoniBot] Chat from ${username}: ${message}${isOwner?" [OWNER]":" [IGNORED]"}`);
     if(!isOwner)return;
     memory.remember(username,"chat",message,4);
-    await behavior.onOwnerMessage(message);
+    try{await behavior.onOwnerMessage(message)}catch(e){console.error("[YazoniBot] Owner handler failed:",e)}
   });
-
-  // Server-console messages sent with /say are exposed to Mineflayer as system chat.
-  // Handle common server-console prefixes without confusing ordinary player chat.
-  bot.on("messagestr",async(message)=>{
-    const text=String(message||"").trim();
-    const consoleMatch=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*(?:says)?\\s*[:>]?\\s*(.+)$/i);
-    if(consoleMatch){
-      console.log("[YazoniBot] Server console message:",consoleMatch[1]);
-      await behavior.onConsoleMessage(consoleMatch[1]);
-    }
-  });
-
-  bot.on("systemChat",async(packet)=>{
-    const text=typeof packet==="string"?packet:String(packet?.formattedText||packet?.text||"").trim();
-    const match=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
-    if(match){
-      console.log("[YazoniBot] System console message:",match[1]);
-      await behavior.onConsoleMessage(match[1]);
-    }
-  });
-
-  // Also accept stdin when the runtime provides a real process console.
-  // This works locally and in hosts that expose service stdin; Render can use /say
-  // on the Minecraft server for the same behavior.
-  if(process.stdin?.isTTY || process.env.ENABLE_STDIN_CONSOLE==="true"){
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data",chunk=>{
-      const line=String(chunk).trim();
-      if(line) behavior.onConsoleMessage(line).catch(e=>console.error("[Console]",e));
-    });
-  }
-  bot.on("playerJoined",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","joined at "+JSON.stringify(p.entity?.position||{}),1);});
-  bot.on("playerLeft",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","left the server",1);});
-  bot.on("health",()=>{if(bot.food<12||bot.health<8)behavior?.onOwnerMessage("").catch(()=>{});});
-  bot.on("death",()=>{game.stop();memory.remember(config.owner,"event","I died and will recover.",5);setTimeout(()=>bot.chat("I am back."),2500);});
+  bot.on("playerJoined",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","joined",1);});
+  bot.on("playerLeft",p=>{if(p.username!==bot.username)memory.remember(p.username,"presence","left",1);});
   bot.on("kicked",r=>console.error("[YazoniBot] Kicked:",r));
   bot.on("error",e=>console.error("[YazoniBot] Error:",e));
-  bot.on("end",reason=>console.warn("[YazoniBot] Minecraft connection ended:",reason));
-  bot.on("end",reason=>{behavior?.stop();console.log("[YazoniBot] Disconnected:",reason);clearTimeout(reconnectTimer);reconnectTimer=setTimeout(makeBot,config.reconnectMs);});
+  bot.on("end",reason=>{behavior?.stop();console.warn("[YazoniBot] Disconnected:",reason);clearTimeout(reconnectTimer);reconnectTimer=setTimeout(makeBot,config.reconnectMs);});
 }
+process.on("unhandledRejection",e=>console.error("[YazoniBot] UNHANDLED REJECTION:",e));
+process.on("uncaughtException",e=>console.error("[YazoniBot] UNCAUGHT EXCEPTION:",e));
 process.on("SIGINT",()=>{behavior?.stop();memory.close();try{bot?.quit("shutdown")}catch{}process.exit(0)});
 process.on("SIGTERM",()=>{behavior?.stop();memory.close();try{bot?.quit("shutdown")}catch{}process.exit(0)});
 makeBot();
