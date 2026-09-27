@@ -128,5 +128,34 @@ export class GameController{
   async sleep(){const bed=this.bot.findBlock({matching:b=>b&&b.name.endsWith("_bed"),maxDistance:24});if(!bed)return false;try{await this.bot.sleep(bed);this.lastAction="slept";return true}catch{return false}}
   avoid(){const p=this.bot.entity?.position;if(!p)return false;const danger=Object.values(this.bot.entities||{}).find(e=>e?.position&&DANGER.has(e.name)&&p.distanceTo(e.position)<8);if(!danger)return false;const dx=p.x-danger.position.x,dz=p.z-danger.position.z,len=Math.hypot(dx,dz)||1;this.goto(p.x+dx/len*12,p.y,p.z+dz/len*12);this.lastAction="moved away from danger";return true}
   explore(){const p=this.bot.entity?.position;if(!p)return false;const a=Math.random()*Math.PI*2,d=32+Math.random()*64;return this.goto(Math.floor(p.x+Math.cos(a)*d),Math.floor(p.y),Math.floor(p.z+Math.sin(a)*d))}
-  async move(direction,durationMs=400){const d=String(direction||"forward");const ms=Math.max(150,Math.min(1500,Number(durationMs)||400));this.bot.setControlState("forward",false);this.bot.setControlState("back",false);this.bot.setControlState("left",false);this.bot.setControlState("right",false);if(!["forward","back","left","right"].includes(d))return false;this.bot.setControlState(d,true);await new Promise(r=>setTimeout(r,ms));this.bot.setControlState(d,false);this.lastAction="moved "+d;return true}\n  async lookAt(x,y,z){try{await this.bot.lookAt({x:Number(x),y:Number(y),z:Number(z)},true);this.lastAction="looked at target";return true}catch{return false}}\n  jump(){this.bot.setControlState("jump",true);setTimeout(()=>this.bot.setControlState("jump",false),180);this.lastAction="jumped";return true}\n  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"move":return this.move(s.direction,s.durationMs);case"look_at":return this.lookAt(s.x,s.y,s.z);case"jump":return this.jump();case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
+  async move(direction,durationMs=400){
+    const d=String(direction||"forward");
+    const ms=Math.max(150,Math.min(1500,Number(durationMs)||400));
+    for(const key of ["forward","back","left","right"]) this.bot.setControlState(key,false);
+    if(!["forward","back","left","right"].includes(d)) return false;
+    this.bot.setControlState(d,true);
+    await new Promise(r=>setTimeout(r,ms));
+    this.bot.setControlState(d,false);
+    this.lastAction="moved "+d;
+    return true;
+  }
+
+  async lookAt(x,y,z){
+    try{
+      await this.bot.lookAt({x:Number(x),y:Number(y),z:Number(z)},true);
+      this.lastAction="looked at target";
+      return true;
+    }catch{
+      return false;
+    }
+  }
+
+  jump(){
+    this.bot.setControlState("jump",true);
+    setTimeout(()=>this.bot.setControlState("jump",false),180);
+    this.lastAction="jumped";
+    return true;
+  }
+
+  async action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"move":return this.move(s.direction,s.durationMs);case"look_at":return this.lookAt(s.x,s.y,s.z);case"jump":return this.jump();case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
 }
