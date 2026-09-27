@@ -15,16 +15,18 @@ function makeBot(){
   bot.once("spawn",async()=>{game.ready();game.setHome();await game.equipArmor();behavior.start();console.log("[YazoniBot] Autonomous mode active.");bot.chat("I am here.");});
   bot.on("chat",async(username,message)=>{
     if(username===bot.username)return;
-    memory.remember(username,"chat",message,username===config.owner?4:1);
-    if(username===config.owner) await behavior.onOwnerMessage(message);
-    else await behavior.onPlayerMessage(username,message);
+    const isOwner=username.toLowerCase()===String(config.owner).toLowerCase();
+    console.log(`[YazoniBot] Chat from ${username}: ${message}${isOwner?" [OWNER]":" [IGNORED]"}`);
+    if(!isOwner)return;
+    memory.remember(username,"chat",message,4);
+    await behavior.onOwnerMessage(message);
   });
 
   // Server-console messages sent with /say are exposed to Mineflayer as system chat.
   // Handle common server-console prefixes without confusing ordinary player chat.
   bot.on("messagestr",async(message)=>{
     const text=String(message||"").trim();
-    const consoleMatch=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*[:>]?\\s*(.+)$/i);
+    const consoleMatch=text.match(/^(?:\\[?Server\\]?|\\[?Console\\]?|Server|Console|SERVER)\\s*(?:says)?\\s*[:>]?\\s*(.+)$/i);
     if(consoleMatch){
       console.log("[YazoniBot] Server console message:",consoleMatch[1]);
       await behavior.onConsoleMessage(consoleMatch[1]);
