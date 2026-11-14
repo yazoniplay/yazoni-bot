@@ -33,10 +33,12 @@ export class BehaviorLoop{
     // Common commands are handled locally so Gemini can never block basic control.
     if(/^(?:stop|stay|wait|stop following|cancel)$/i.test(text)){this.game.stop();say("Stopping.");return;}
     if(/^(?:hi|hello|hey|yo)(?:[!. ]*)$/i.test(text)){say("Yo "+this.config.owner+" 😎");return;}
-    if(/^(?:follow me|follow)$/i.test(text)){this.game.action({action:"follow_owner"});say("Following you.");return;}
+    if(/^(?:follow(?:\s+me)?|come\s+with\s+me)(?:\s+(?:bro|dude|pls|please))?[!. ]*$/i.test(text)){this.game.action({action:"follow_owner"});say("Following you.");return;}
     if(/^(?:come here|come to me|come)$/i.test(text)){const ok=await this.game.action({action:"come_owner"});say(ok?"Coming.":"I can't see you.");return;}
     if(/^(?:go home|home)$/i.test(text)){const h=this.game.home;const ok=h?await this.game.action({action:"goto",x:h.x,y:h.y,z:h.z}):false;say(ok?"Going home.":"No home set.");return;}
     if(/^(?:eat|eat food)$/i.test(text)){const ok=await this.game.action({action:"eat"});say(ok?"Eating.":"I have no food.");return;}
+    const tgt=text.match(/^(?:mine|break|dig|get|chop)\s+(?:this|that|it|(?:the\s+|this\s+|that\s+)?block|what\s*i'?m\s+looking\s+at|(?:what'?s?|whats)\s+(?:in\s*front|infront)(?:\s+of\s+(?:you|me|us))?|(?:the\s+)?(?:block\s+)?(?:in\s*front|infront)(?:\s+of\s+(?:you|me|us))?)(?:\s+(\d+))?[!. ]*$/i);
+    if(tgt){const ok=await this.game.action({action:"mine_target",count:Number(tgt[1])||1});say(ok?"Mining it.":"I don't see a block to mine.");return;}
     const up=text.match(/^(?:mine|dig)\s+(up|down)(?:\s+(\d+))?$/i);
     if(up){const ok=await this.game.action({action:"mine_direction",item:up[1].toLowerCase(),count:Number(up[2])||8});say(ok?"Mining "+up[1]+".":"I can't mine that direction.");return;}
     const mine=text.match(/^(?:mine|collect|get)\s+(.+?)(?:\s+(\d+))?$/i);

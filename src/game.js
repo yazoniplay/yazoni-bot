@@ -17,11 +17,43 @@ export class GameController{
     if(!t||this.bot.entity.position.distanceTo(t.position)>24)return;
     this.bot.lookAt(t.position.offset(0,t.height||1.62,0),false).catch(()=>{});
   }
+  ownerLookTarget(max=7){
+    const t=this.playerEntity(this.config.owner);if(!t||t.yaw==null)return null;
+    try{
+      const V=t.position.constructor,yaw=t.yaw,pitch=t.pitch||0;
+      const dir=new V(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
+      const hit=this.bot.world.raycast(t.position.offset(0,t.height||1.62,0),dir,max);
+      return hit&&hit.name&&hit.name!=="air"?hit:null;
+    }catch{return null}
+  }
+  botFacingBlock(){
+    try{
+      const c=this.bot.blockAtCursor(5);if(c&&c.name!=="air")return c;
+      const p=this.bot.entity.position.floored(),yaw=this.bot.entity.yaw;
+      const dx=Math.round(-Math.sin(yaw)),dz=Math.round(-Math.cos(yaw));
+      for(const dy of [1,0]){const b=this.bot.blockAt(p.offset(dx,dy,dz));if(b&&b.name!=="air")return b;}
+    }catch{}
+    return null;
+  }
+  pickTarget(){return this.ownerLookTarget(7)||this.botFacingBlock();}
+  async mineTarget(count=1){
+    const b=this.pickTarget();if(!b||!this.bot.entity)return false;
+    if(["bedrock","barrier","end_portal","end_portal_frame","water","lava"].includes(b.name))return false;
+    const n=Math.max(1,Math.min(16,Number(count)||1)),name=b.name;
+    try{
+      await this.bot.pathfinder.goto(new GoalNear(b.position.x,b.position.y,b.position.z,3));
+      const cur=this.bot.blockAt(b.position);
+      if(cur&&cur.name!=="air"&&this.bot.canDigBlock(cur)){await this.equipBestTool(cur);await this.bot.dig(cur,true);}
+      this.lastAction="mined "+name;
+      if(n>1)await this.collect(name,n-1);
+      return true;
+    }catch(e){this.memory.remember(this.config.owner,"failure","mine target "+name+": "+e.message,3);return false}
+  }
   state(){
     const p=this.bot.entity?.position;
     const entities=Object.values(this.bot.entities||{}).filter(e=>e?.position).slice(0,40).map(e=>({type:e.type,name:e.name||e.displayName||"",distance:p?+p.distanceTo(e.position).toFixed(1):null}));
     const blocks=p?this.bot.findBlocks({matching:b=>b&&b.name!=="air",maxDistance:10,count:50}).map(pos=>this.bot.blockAt(pos)?.name).filter(Boolean):[];
-    return {position:p?{x:+p.x.toFixed(1),y:+p.y.toFixed(1),z:+p.z.toFixed(1)}:null,health:this.bot.health,food:this.bot.food,experience:this.bot.experience?.level||0,dimension:this.bot.game?.dimension,time:this.bot.time?.timeOfDay,rain:this.bot.isRaining,players:Object.keys(this.bot.players).slice(0,20),nearbyEntities:entities,nearbyBlocks:[...new Set(blocks)],inventory:this.bot.inventory.items().map(i=>({name:i.name,count:i.count}))};
+    const lt=this.ownerLookTarget(7),fb=this.botFacingBlock();return {ownerLookingAt:lt?{block:lt.name,x:lt.position.x,y:lt.position.y,z:lt.position.z}:null,botFacing:fb?fb.name:null,following:this.following,lastAction:this.lastAction,position:p?{x:+p.x.toFixed(1),y:+p.y.toFixed(1),z:+p.z.toFixed(1)}:null,health:this.bot.health,food:this.bot.food,experience:this.bot.experience?.level||0,dimension:this.bot.game?.dimension,time:this.bot.time?.timeOfDay,rain:this.bot.isRaining,players:Object.keys(this.bot.players).slice(0,20),nearbyEntities:entities,nearbyBlocks:[...new Set(blocks)],inventory:this.bot.inventory.items().map(i=>({name:i.name,count:i.count}))};
   }
   say(msg){if(!msg)return;const text=String(msg).replace(/\s+/g," ").slice(0,240);console.log(`[${this.config.botName}] say: ${text}`);this.bot.chat(text);}
   follow(name){const t=this.playerEntity(name);if(!t)return false;this.following=name;this.bot.pathfinder.setGoal(new GoalFollow(t,this.config.followDistance||2),true);return true;}
@@ -164,6 +196,6 @@ export class GameController{
     return true;
   }
 
-  async action(s){this.acting++;try{return await this._action(s)}finally{this.acting--}}
-  async _action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"move":return this.move(s.direction,s.durationMs);case"look_at":return this.lookAt(s.x,s.y,s.z);case"jump":return this.jump();case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
+  async action(s){this.acting++;try{return await this._action(s)}finally{this.acting--;if(this.following&&!this.bot.pathfinder?.goal)this.follow(this.following);}}
+  async _action(s){switch(s?.action){case"follow_owner":return this.follow(this.config.owner);case"move":return this.move(s.direction,s.durationMs);case"look_at":return this.lookAt(s.x,s.y,s.z);case"jump":return this.jump();case"lead_owner":return this.lead(this.config.owner,s.distance||6);case"hit":return this.hit(s.item||"");case"drop":return this.drop(s.item,s.count||1);case"pickup":return this.pickupNearby();case"equip":return this.equipArmor();case"come_owner":return this.come(this.config.owner);case"stop":this.stop();return true;case"goto":return this.goto(s.x,s.y,s.z);case"explore":return this.explore();case"avoid":return this.avoid();case"mine_target":return this.mineTarget(s.count||1);case"mine_direction":return this.mineDirection(s.item,s.count||8);case"mine":case"collect":return this.collect(s.item||"stone",s.count||4);case"craft":return this.craft(s.item,s.count||1);case"smelt":return this.smelt(s.item,s.count||1);case"farm":return this.farm();case"harvest":return this.harvest();case"build":return this.build(s.block||"oak_planks",s.pattern||"wall");case"store":return this.store();case"sleep":return this.sleep();case"eat":return this.eat();default:return true}}
 }
