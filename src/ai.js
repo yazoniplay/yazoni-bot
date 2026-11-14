@@ -73,6 +73,7 @@ export class Brain{
     const prompt=this.context(state)+"\n\nOWNER COMMAND:\n"+input+"\n\nAct now. Execute the command with tools. If movement is needed, actually move.";
     let totalActions=0;
     try{
+      console.log(`[${this.config.botName}] Gemini thinking (${this.model}): ${input}`);
       const interaction=await this.callModel(prompt);
       const calls=(interaction.steps||[]).filter(s=>s.type==="function_call").slice(0,this.config.maxPlanSteps||6);
       for(const call of calls){
@@ -81,6 +82,7 @@ export class Brain{
         totalActions++;
         if(!result?.ok) console.warn(`[${this.config.botName}] action failed`,call.name,result?.error||"unknown");
       }
+      console.log(`[${this.config.botName}] Gemini done: ${totalActions} action(s), reply: ${JSON.stringify(interaction.output_text||"")}`);
       return {reply:interaction.output_text||"",actions:totalActions};
     }catch(e){
       console.error(`[${this.config.botName}] Gemini:`,e.message);

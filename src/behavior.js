@@ -69,6 +69,7 @@ export class BehaviorLoop{
       });
       if(id!==this.commandId)return;
       if(speak&&result.reply)this.game.say(result.reply);
+      else if(speak&&!result.actions)this.game.say("Hm, my brain gave me nothing. Say that again?");
     }catch(e){
       console.error(`[${this.config.botName}] Owner command failed:`,e);
       if(speak)this.game.say("My brain errored. Check the logs.");

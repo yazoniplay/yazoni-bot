@@ -44,6 +44,7 @@ class BotInstance{
       }else if(c.autoFollow){game.follow(c.owner);} // respawned after dying
       this.online=true;this.attempt=0;
     });
+    if(process.env.LOG_SERVER_CHAT!=="false")bot.on("messagestr",m=>{if(m&&m.trim())console.log(`${tag} [server] ${m.slice(0,200)}`);});
     bot.on("death",()=>{this.memory.remember(c.owner,"event","I died",5);game.cancelMovement();});
     bot.on("chat",(username,message)=>{
       if(username===bot.username||botNames.includes(username))return;
