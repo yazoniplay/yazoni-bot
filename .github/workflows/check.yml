@@ -11,7 +11,4 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: node --check src/index.js
-      - run: node --check src/game.js
-      - run: node --check src/ai.js
-      - run: node --check src/memory.js
+      - run: npm run check

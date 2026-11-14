@@ -23,6 +23,12 @@ export class Memory {
     }
   }
 
+  scheduleSave() {
+    if (this.timer) return;
+    this.timer = setTimeout(() => { this.timer = null; this.save(); }, 1000);
+    this.timer.unref?.();
+  }
+
   save() {
     const temp = this.file + ".tmp";
     fs.writeFileSync(temp, JSON.stringify(this.data));
@@ -40,7 +46,7 @@ export class Memory {
     });
     // Keep the persistent memory bounded so the bot cannot grow the file forever.
     if (this.data.memories.length > 5000) this.data.memories.splice(0, this.data.memories.length - 5000);
-    this.save();
+    this.scheduleSave();
   }
 
   recent(player, limit = 24) {
@@ -62,7 +68,7 @@ export class Memory {
 
   setWorld(key, value) {
     this.data.world[String(key)] = { value, updated_at: Date.now() };
-    this.save();
+    this.scheduleSave();
   }
 
   getWorld(key, fallback = null) {
@@ -71,6 +77,8 @@ export class Memory {
   }
 
   close() {
+    clearTimeout(this.timer);
+    this.timer = null;
     this.save();
   }
 }
