@@ -55,9 +55,11 @@ export class BehaviorLoop{
   async runBrain(input,id,speak=true){
     if(this.busy)return;
     this.busy=true;
+    let spoke=false;
     try{
       const result=await this.brain.runAgent(input,this.game.state(),async(name,args)=>{
         if(id!==this.commandId)return{ok:false,error:"Cancelled by a newer owner message."};
+        if(name==="say"){if(speak&&args?.message){this.game.say(args.message);spoke=true;}return{ok:true};}
         const mapped=this.mapTool(name,args);
         if(!mapped)return{ok:false,error:"Unknown tool: "+name};
         try{
@@ -68,8 +70,10 @@ export class BehaviorLoop{
         }catch(e){return{ok:false,error:e.message,state:this.game.state()};}
       });
       if(id!==this.commandId)return;
-      if(speak&&result.reply)this.game.say(result.reply);
-      else if(speak&&!result.actions)this.game.say("Hm, my brain gave me nothing. Say that again?");
+      if(speak&&!spoke){ // the owner always gets an answer
+        if(result.reply)this.game.say(result.reply);
+        else this.game.say(result.actions?"On it.":"Hm, my brain gave me nothing. Say that again?");
+      }
     }catch(e){
       console.error(`[${this.config.botName}] Owner command failed:`,e);
       if(speak)this.game.say("My brain errored. Check the logs.");

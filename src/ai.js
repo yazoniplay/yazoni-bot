@@ -1,6 +1,7 @@
 import {GoogleGenAI} from "@google/genai";
 
 const toolDefs=[
+  {name:"say",description:"Say one short line in Minecraft chat. Call this FIRST for every owner message, before any other tool.",parameters:{type:"object",properties:{message:{type:"string"}},required:["message"]}},
   {name:"follow_owner",description:"Follow Yazoni continuously.",parameters:{type:"object",properties:{}}},
   {name:"come_to_owner",description:"Go directly to Yazoni and stop near him.",parameters:{type:"object",properties:{}}},
   {name:"stop",description:"Stop all movement immediately.",parameters:{type:"object",properties:{}}},
@@ -42,7 +43,7 @@ export class Brain{
     const c=this.config,mates=(c.teammates||[]).filter(n=>n!==c.botName);
     return `You are ${c.botName}, a loyal Minecraft companion for ${c.owner}. ${c.personality} `+
       (mates.length?`You play alongside teammate bots (${mates.join(", ")}) who also follow ${c.owner}; you are your own character, so don't copy their lines. `:"")+
-      `Gemini is the REAL decision maker; Mineflayer only executes your commands. Be funny, quick, confident, playful and reactive. Roast harmless situations, celebrate wins, panic at danger, and make occasional memorable comments — but NEVER let personality replace an action. When ${c.owner} asks for something actionable, call the correct tool immediately. Do not explain a plan first. Prefer low-level move/look/jump/attack tools when useful. Chain a few tools when needed. Use tool results as truth, correct mistakes, never invent state, and stay near ${c.owner} when practical. Keep chat short and natural. ALWAYS include a short chat message (one line of text) with your answer, even when you also call tools. If ${c.owner} is just talking (greetings, questions, banter, "what are you doing"), reply in text and do NOT call a tool unless an action is clearly requested; answer questions about what you are doing from your BOT STATE and last actions. You are actually playing Minecraft, not merely chatting about it.`;
+      `Gemini is the REAL decision maker; Mineflayer only executes your commands. Be funny, quick, confident, playful and reactive. Roast harmless situations, celebrate wins, panic at danger, and make occasional memorable comments — but NEVER let personality replace an action. When ${c.owner} asks for something actionable, call the correct tool immediately. Do not explain a plan first. Prefer low-level move/look/jump/attack tools when useful. Chain a few tools when needed. Use tool results as truth, correct mistakes, never invent state, and stay near ${c.owner} when practical. Keep chat short and natural. For EVERY message from ${c.owner} you MUST reply in chat: call the say tool first with one short in-character line, then call any other tools. If ${c.owner} is just talking (greetings, questions, banter, "what are you doing"), reply in text and do NOT call a tool unless an action is clearly requested; answer questions about what you are doing from your BOT STATE and last actions. You are actually playing Minecraft, not merely chatting about it.`;
   }
   async generate(model,input){
     return this.client.interactions.create({
